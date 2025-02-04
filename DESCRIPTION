@@ -6,6 +6,18 @@ Author: Ben Wesley
 Maintainer: Ben Wesley <bkw2118@columbia.edu>
 Description: Segments Structural Variants and Identifies
     Copy Number of Cells sequenced following the DLP+ method.
-License: GLP-3.0
+License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
+Imports: 
+    GenomicRanges,
+    ggplot2,
+    IRanges,
+    matrixStats,
+    parallel,
+    QDNAseq,
+    QDNAseq.hg19,
+    QDNAseq.hg38,
+    transport,
+    unbalhaar
+RoxygenNote: 7.2.3
