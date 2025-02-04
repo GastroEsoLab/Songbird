@@ -1,0 +1,11 @@
+Package: Songbird
+Type: Package
+Title: Wavelet Based Segmentation and Copy Number Estimation for DLP+ scDNAseq data
+Version: 0.0.1
+Author: Ben Wesley
+Maintainer: Ben Wesley <bkw2118@columbia.edu>
+Description: Segments Structural Variants and Identifies
+    Copy Number of Cells sequenced following the DLP+ method.
+License: GLP-3.0
+Encoding: UTF-8
+LazyData: true
