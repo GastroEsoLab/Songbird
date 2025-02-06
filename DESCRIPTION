@@ -12,6 +12,7 @@ LazyData: true
 Imports: 
     GenomicRanges,
     ggplot2,
+    gsignal,
     IRanges,
     matrixStats,
     parallel,
