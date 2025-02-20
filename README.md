@@ -6,7 +6,11 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 ## By 2/12/2025
 - [x] create function files
 - [ ] reduce dependencies & add to DESCRIPTION FILE
-- [x] finalize clustering for WGD detection
+- [ ] finalize clustering for WGD detection
+  - [ ] create function to mix cells from 4 samples
+  - [ ] create testing metric
+  - [ ] test mclust vs community detection
+  - [ ] test feature selection
 - [ ] minimal test on hg38 files
 - [ ] minimal documentation
 
