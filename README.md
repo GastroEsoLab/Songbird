@@ -19,3 +19,16 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [ ] qc plotting functions
 - [ ] allow recalibration of correction factor
 - [ ] add vignette
+
+Wow time passed
+## By 3/26/2025
+
+### new structure - steps
+  - [ ] read in bam file using qDNASeq to get counts
+  - [ ] Calculate GC+Map correction
+  - [ ] Instantiate scExperiment Class and populate with metadata and Read/GC Corrected matrix
+  - [ ] Make UBH Matrix and add to scExperiment Class
+  - [ ] Calculate Ploidy from matching bedpe file and add quality score
+  - [ ] Cluster cells using the breakpoints + phenograph
+  - [ ] For each cluster identify WGD cells
+  - [ ] Make copy matrix
