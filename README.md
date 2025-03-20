@@ -19,6 +19,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [ ] qc plotting functions
 - [ ] allow recalibration of correction factor
 - [ ] add vignette
+- [ ] check inputs
 
 Wow time passed
 ## By 3/26/2025
