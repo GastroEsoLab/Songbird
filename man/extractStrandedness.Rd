@@ -2,7 +2,7 @@
 % Please edit documentation in R/bedProcessing.R
 \name{extractStrandedness}
 \alias{extractStrandedness}
-\title{Title}
+\title{extractStrandedness}
 \usage{
 extractStrandedness(readName, n)
 }
@@ -15,5 +15,5 @@ extractStrandedness(readName, n)
 read orientation from the last n characters of the read name
 }
 \description{
-Title
+extractStrandedness
 }

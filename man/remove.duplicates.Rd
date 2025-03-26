@@ -2,7 +2,7 @@
 % Please edit documentation in R/bedProcessing.R
 \name{remove.duplicates}
 \alias{remove.duplicates}
-\title{Title}
+\title{remove.duplicates}
 \usage{
 remove.duplicates(bed)
 }
@@ -10,8 +10,8 @@ remove.duplicates(bed)
 \item{bed}{a data frame formatted as a bed file with read positions}
 }
 \value{
-a data frame with duplicate reads not caught by samtools removed
+a data frame with duplicate reads (identical start or end sites) removed
 }
 \description{
-Title
+remove.duplicates
 }

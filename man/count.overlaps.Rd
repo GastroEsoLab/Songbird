@@ -2,7 +2,7 @@
 % Please edit documentation in R/bedProcessing.R
 \name{count.overlaps}
 \alias{count.overlaps}
-\title{Title}
+\title{count.overlaps}
 \usage{
 count.overlaps(bed, min.size = 50, max.size = 1000, tag.overlap = 10)
 }
@@ -19,5 +19,5 @@ count.overlaps(bed, min.size = 50, max.size = 1000, tag.overlap = 10)
 the bed file with the number of reads overlapping the upstream and over regions for each read
 }
 \description{
-Title
+count.overlaps
 }

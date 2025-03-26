@@ -1,8 +1,8 @@
 #' Title
 #'
-#' @param data
-#' @param column
-#' @param return_counts
+#' @param data list of cell processing results
+#' @param column column to select from
+#' @param return_counts boolean to return total reads
 #'
 #' @return
 #' @export
@@ -116,7 +116,7 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
 identify_subclones <- function(sbird_sce){
   # Cluster the cells using the changepoint matrix and sce
   change_mtx <- generate_changepoint_matrix(SingleCellExperiment::rowData(sbird_sce, 'segmented'), use_mask = SingleCellExperiment::rowData(sbird_sce)$overlap_use)
-  reducedDim(sbird_sce, 'changepoint_mtx') <- change_mtx
+  SingleCellExperiment::reducedDim(sbird_sce, 'changepoint_mtx') <- change_mtx
 
   clust_res <- Rphenograph::Rphenograph(change_mtx, k = 30)
   sbird_sce$subclone <- clust_res[[2]]$membership
@@ -163,7 +163,7 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000){
 
 #' Title
 #'
-#' @param sbird_sce
+#' @param sbird_sce the songbird single cell experiment object
 #'
 #' @return
 #' @export
@@ -225,8 +225,8 @@ create_sce <- function(res){
 # Apply a gaussian kernel to the change matrix
 #' Title
 #'
-#' @param matrix
-#' @param n_neighbors
+#' @param matrix the inputted matrix to smooth over
+#' @param n_neighbors number of adjacent bins to smooth with
 #'
 #' @return
 #' @export
@@ -259,8 +259,8 @@ gauss_kernel <- function(matrix, n_neighbors){
 
 #' Title
 #'
-#' @param matrix
-#' @param use_mask
+#' @param matrix the inputted matrix to identify changepoints from
+#' @param use_mask bins to use
 #'
 #' @return
 #' @export

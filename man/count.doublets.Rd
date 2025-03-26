@@ -2,15 +2,17 @@
 % Please edit documentation in R/bedProcessing.R
 \name{count.doublets}
 \alias{count.doublets}
-\title{Title}
+\title{count.doublets}
 \usage{
-count.doublets(bed, tag.overlap = 9)
+count.doublets(bed, min.tag.overlap = 9, max.tag.overlap = 10)
 }
 \arguments{
 \item{bed}{a data frame formatted as a bed file with read positions must be filtered by remove.duplicates}
 
-\item{tag.overlap}{smallest length of the tagmentation read overlap (default 9 nt)}
+\item{min.tag.overlap}{smallest length of the tagmentation read overlap (default 9 nt)}
+
+\item{max.tag.overlap}{largest length of the tagmentation read overlap (default 10 nt)}
 }
 \description{
-Title
+count.doublets
 }
