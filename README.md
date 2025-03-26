@@ -7,7 +7,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [ ] Quality Scorer
   - [ ] Reads per CN
   - [ ] UMAP and PCA plotter
-- [x] minimize dependencies? (Rphenograph is github install only...)
+- [ ] minimize dependencies? (Rphenograph is github install only...)
 - [ ] Run on both hg19 and hg38 (and T2T?)
 - [ ] Allow to skip WGD & Subclone ID
 - [ ] Allow to skip any ploidy estimation (Default to CN 2 or a provided value)
