@@ -31,3 +31,15 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
     - Our best cells have middling quality scores in the PBMC dataset
   - [x] Make Copy Matrix
   - [x] Minimal Vignette
+
+# Minimal Vignette
+```R
+library(Songbird)
+bams <- list.files(path = folder, pattern = ".bam$", full.names = T)
+bedpes <- list.files(path = folder, pattern = ".bedpe$", full.names = T)
+res <- mclapply(1:length(bams), function(i) process.cell(bams[i], bedpes[i], bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000), mc.cores = 32)
+sbird_sce <- create_sce(res)
+sbird_sce <- identify_subclones(sbird_sce)
+sbird_sce <- ploidy_correction(sbird_sce)
+sbird_sce <- copyCall(sbird_sce)
+```
