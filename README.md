@@ -29,8 +29,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Correct Ploidy Estimation & Perform WGD Detection
   - [-] Produce Final Quality Score
     - Our best cells have middling quality scores in the PBMC dataset
-  - [-] Make Copy Matrix
-    - Propogate over CN & UBH calling to omitted regions
+  - [x] Make Copy Matrix
   - [x] Minimal Vignette
 
 # Minimal Vignette
