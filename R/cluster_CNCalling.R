@@ -62,7 +62,6 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
   peak <- dens$x[which.max(dens$y)]
 
   # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-  print(round(expected_ploidy))
   modeState <- seq(round(expected_ploidy)-1, round(expected_ploidy)+1)
   modeState <- modeState[modeState>0]
 
@@ -115,7 +114,7 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
 #' @examples
 identify_subclones <- function(sbird_sce){
   # Cluster the cells using the changepoint matrix and sce
-  change_mtx <- generate_changepoint_matrix(SingleCellExperiment::rowData(sbird_sce, 'segmented'), use_mask = SingleCellExperiment::rowData(sbird_sce)$overlap_use)
+  change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, 'segmented'), use_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use)
   SingleCellExperiment::reducedDim(sbird_sce, 'changepoint_mtx') <- change_mtx
 
   clust_res <- Rphenograph::Rphenograph(change_mtx, k = 30)
@@ -172,11 +171,11 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000){
 copyCall <- function(sbird_sce){
   # Fit means to produce the final copy matrix
   cn_matrix <- c()
-  segmented_matrix <- SingleCellExperiment::rowData(sbird_sce, 'segmented')
+  segmented_matrix <- SummarizedExperiment::assay(sbird_sce, 'segmented')
   for(i in 1:ncol(segmented_matrix)){
-    cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], SingleCellExperiment::rowData(sbird_sce)$overlap_use, sbird_sce$corr.ploidy[i]))
+    cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], SummarizedExperiment::rowData(sbird_sce)$overlap_use, sbird_sce$corr.ploidy[i]))
   }
-  SingleCellExperiment::rowData(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
+  SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
   return(sbird_sce)
 }
 
@@ -212,13 +211,13 @@ create_sce <- function(res){
   sbird_sce$est_genome_size <- sbird_sce$doublet_tag_rate/sbird_sce$observed_coverage
 
   # Bin information
-  SingleCellExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
-  SingleCellExperiment::rowData(sbird_sce)$start <- res[[1]]$start
-  SingleCellExperiment::rowData(sbird_sce)$end <- res[[1]]$end
-  SingleCellExperiment::rowData(sbird_sce)$bin_name <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
-  SingleCellExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
-  SingleCellExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
-  SingleCellExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
+  SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
+  SummarizedExperiment::rowData(sbird_sce)$start <- res[[1]]$start
+  SummarizedExperiment::rowData(sbird_sce)$end <- res[[1]]$end
+  SummarizedExperiment::rowData(sbird_sce)$bin_name <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
+  SummarizedExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
+  SummarizedExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
+  SummarizedExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
   return(sbird_sce)
 }
 
