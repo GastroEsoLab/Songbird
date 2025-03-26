@@ -35,6 +35,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 # Minimal Vignette
 ```R
 library(Songbird)
+folder = '~/hTert-1/individualBams'
 bams <- list.files(path = folder, pattern = ".bam$", full.names = T)
 bedpes <- list.files(path = folder, pattern = ".bedpe$", full.names = T)
 res <- mclapply(1:length(bams), function(i) process.cell(bams[i], bedpes[i], bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000), mc.cores = 32)
