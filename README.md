@@ -25,11 +25,11 @@ Wow time passed
 ## By 3/26/2025
 
 ### new structure - steps
-  - [ ] read in bam file using qDNASeq to get counts
-  - [ ] Calculate GC+Map correction
-  - [ ] Instantiate scExperiment Class and populate with metadata and Read/GC Corrected matrix
-  - [ ] Make UBH Matrix and add to scExperiment Class
-  - [ ] Calculate Ploidy from matching bedpe file and add quality score
+  - [x] read in bam file using qDNASeq to get counts
+  - [x] Calculate GC+Map correction
+  - [x] Instantiate scExperiment Class and populate with metadata and Read/GC Corrected matrix
+  - [x] Make UBH Matrix and add to scExperiment Class
+  - [x] Calculate Ploidy from matching bedpe file and add quality score
   - [ ] Cluster cells using the breakpoints + phenograph
   - [ ] For each cluster identify WGD cells
   - [ ] Make copy matrix
