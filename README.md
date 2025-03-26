@@ -4,6 +4,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 # To Do List
 - [ ] QC Plotting Functions
   - [ ] Heatmap plotter
+  - [ ] Cell Plotter (reads, segmentation, cn)
   - [ ] Quality Scorer
   - [ ] Reads per CN
   - [ ] UMAP and PCA plotter
