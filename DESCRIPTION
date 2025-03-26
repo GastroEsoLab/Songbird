@@ -10,6 +10,7 @@ License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
 Imports: 
+    ComplexHeatmap,
     GenomicRanges,
     ggplot2,
     gsignal,
@@ -19,6 +20,9 @@ Imports:
     QDNAseq,
     QDNAseq.hg19,
     QDNAseq.hg38,
+    Rphenograph,
+    SingleCellExperiment,
+    stats,
     transport,
     unbalhaar
 RoxygenNote: 7.2.3

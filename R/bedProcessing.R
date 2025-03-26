@@ -1,3 +1,185 @@
+#' process.cell
+#'
+#' @param bam path to a bam file
+#' @param bedpe path to the accompanying bedfile
+#' @param est.ploidy estimated ploidy of the cell (from estimate.ploidy)
+#' @param bin.size number of nucleotides per bin
+#' @param min_svSize number of bins for the smallest confident structural variant
+#'
+#' @return
+#' @export
+#'
+#' @examples
+process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000){
+  min.svSize <- min.svSize/bin.size
+
+  reads <- Songbird::load_cell(bam, binSize = bin.size)
+  reads.cor <- Songbird::convert_long(reads)
+  num_reads <- c(sum(reads.cor$uncorrected.reads))
+
+  # Get mode CN indices
+  reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use, min_svSize = min.svSize)
+  reads.cor$num_reads <- num_reads
+  reads.cor$bam_file <- bam
+  reads.cor$bedpe_file <- bedpe
+
+  if(is.null(bedpe)){
+    reads.cor$est_ploidy <- NA
+  }else{
+    out <- Songbird::estimate.ploidy(sample = bedpe, binSize = bin.size, min_length = min_length, max_length = max_length)
+    reads.cor$ratio <- out$ratio
+    reads.cor$est_ploidy <- out$est_ploidy
+    reads.cor$breadth <- out$breadth
+    reads.cor$coverage <- out$coverage
+    reads.cor$prop_doublet_tags <- out$prop_doublet_tags
+    reads.cor$avg_length <- out$avg_length
+    reads.cor$overlap_genome_size <- out$overlap_genome_size
+  }
+  return(reads.cor)
+}
+
+
+#' Title
+#'
+#' @param ploidy
+#' @param prop_doublets
+#' @param coverage
+#'
+#' @return
+#' @export
+#'
+#' @examples
+correct_ploidy <- function(ploidy, prop_doublets, coverage){
+  # Right now its just a place holder function
+  var = 1 + 1
+  return(ploidy)
+}
+
+#' convert_long
+#'
+#' @param reads reads object from QDNASeq
+#'
+#' @return table of reads for each cell
+#'
+#' @examples
+convert_long <- function(reads){
+  uncorReads <- reads$reads
+  reads <- reads$reads.cor
+  metadata <- reads@featureData@data
+
+  # Add the corrected reads
+  table <- reads@assayData$copynumber
+  out_table <- c()
+  for(i in 1:ncol(table)){
+    new_dat <- metadata
+    new_dat$reads <- table[,i]
+    new_dat$cell_id <- colnames(table)[i]
+    out_table <- rbind(out_table, new_dat)
+  }
+
+  # Add the raw reads
+  table <- uncorReads@assayData$counts
+  out_table$uncorrected.reads <- table[,1]
+  return(out_table)
+}
+
+
+#' load_cell
+#'
+#' @param bamPath
+#' @param binSize
+#'
+#' @return
+#'
+#' @examples
+load_cell <- function(bamPath, binSize){
+  binSize <- binSize/1000
+
+  bins <- QDNAseq::getBinAnnotations(binSize = binSize, genome = 'hg38')
+  reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
+  reads <- QDNAseq::applyFilters(reads, residual = T, blacklist = T)
+  reads <- QDNAseq::estimateCorrection(reads)
+  reads.cor <- QDNAseq::correctBins(reads)
+  return(list(reads = reads, reads.cor = reads.cor))
+}
+
+#' wh_transform
+#'
+#' @param vals values for the walsh haddamayer transform
+#' @param sv_binSize minimum confident structural variant size
+#'
+#' @return
+#'
+#' @examples
+wh_transform <- function(vals, sv_binSize = 25){
+  sv_freq <- floor(length(vals)/sv_binSize)
+
+  transformation <- gsignal::fwht(vals)
+  mask <- rep(1, length(transformation))
+  mask[sv_freq:length(transformation)] <- 0
+
+  reconstr <- gsignal::ifwht(transformation*mask)
+  reconstr <- reconstr[1:length(vals)]
+  return(reconstr)
+}
+
+#' calc_madOffset
+#'
+#' @param values calculate MAD for ubhaar estimation
+#'
+#' @return
+#'
+#' @examples
+calc_madOffset <- function(values){
+  median_value <- stats::median(values, na.rm = TRUE)
+  total_deviation <- abs(values - median_value)
+  return(stats::median(total_deviation, na.rm = T))
+}
+
+#' ubh_segment
+#'
+#' @param reads gc and map corrected reads from the qDNASeq object
+#' @param use boolean array marking high quality bins
+#' @param min_svSize minimum confident structural variant size (in bins)
+#'
+#' @return
+#' @export
+#'
+#' @examples
+ubh_segment <- function(reads, use, min_svSize){
+  out <- rep(NA, length(reads))
+  use_idxs <- which(use)
+  reads <- reads[use]
+
+  # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
+  tail_length <- round(length(reads)*0.1)
+  reads_wTail <- c(reads, rep(0, tail_length))
+
+  mean <- mean(reads_wTail)
+  sd <- sd(reads_wTail)
+  reads_wTail <- (reads_wTail-mean)/sd
+  noise_comp <- wh_transform(reads_wTail, sv_binSize = min_svSize)
+
+  UBH_obj <- unbalhaar::best.unbal.haar.bu(reads_wTail)
+  est.sigma <- calc_madOffset(reads_wTail)
+
+  score_fun <- function(x, UBH_transform, reads, noise_comp, est.sigma){
+    UBH_transform <- unbalhaar::hard.thresh.bu(UBH_transform, x*est.sigma)
+    reconstr <- unbalhaar::reconstr.bu(UBH_transform)
+    norm_reads <- reads - reconstr
+    return(transport::wasserstein1d(norm_reads, noise_comp))
+  }
+
+  sigma_multiplier <- stats::optimize(score_fun, c(0.5, 4), UBH_obj, reads_wTail, noise_comp, est.sigma, tol = 1e-3)
+
+  optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
+  reconstr <- unbalhaar::reconstr.bu(optim_UBH)*sd + mean
+  reconstr <- reconstr[1:length(reads)]
+  out[use] <- reconstr
+  return(out)
+}
+
+
 #' load.preprocess.bed
 #'
 #' @param bedpe_file path to the bedpe file produced by the preprocessing pipeline
@@ -5,10 +187,9 @@
 #' @param max_length maximum read length (default 1000 nt)
 #'
 #' @return a data frame set up as a traditional bed file
-#' @export
 #'
 #' @examples
-load.preprocess.bed <- function(bedpe_file, min_length = 30, max_length = 1000){
+load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_length = 1000){
   bedpe <- utils::read.table(bedpe_file, sep = '\t')
   colnames(bedpe) <- c('Chr1', 'Start1', 'End1', 'Chr2', 'Start2', 'End2', 'Name', 'Score', 'R1_direction', 'R2_direction')
   bed <- data.frame(Chr = bedpe$Chr1, Start = bedpe$Start1, End = bedpe$End1,
@@ -24,15 +205,16 @@ load.preprocess.bed <- function(bedpe_file, min_length = 30, max_length = 1000){
   bed <- bed[(bed$Length > min_length) & (bed$Length < max_length),]
   bed$Strandedness <- extractStrandedness(bed$Name, 3)
   bed <- bed[grep('(chr[0-9]+|X|Y)$', bed$Chr),]
+
+  bed <- filter.bed(bed, bin_data)
   return(bed)
 }
 
-#' Title
+#' remove.duplicates
 #'
 #' @param bed a data frame formatted as a bed file with read positions
 #'
-#' @return a data frame with duplicate reads not caught by samtools removed
-#' @export
+#' @return a data frame with duplicate reads (identical start or end sites) removed
 #'
 #' @examples
 #'
@@ -41,36 +223,60 @@ remove.duplicates <- function(bed) {
   tmp.start <- paste(bed$Chr, bed$Start, bed$Strandedness)
   tmp.end <- paste(bed$Chr, bed$End, bed$Strandedness)
 
-  are.duplicated <- base::duplicated(tmp.start, fromLast = TRUE) | base::duplicated(tmp.end)
+  are.duplicated <- duplicated(tmp.start, fromLast = TRUE) | duplicated(tmp.end)
   return(bed[!are.duplicated,])
 }
 
-#' Title
+#' filter.bed
+#'
+#' @param bed a data frame formatted as a bed file with read positions
+#'
+#' @return a data frame with duplicate reads (identical start or end sites) removed
+#'
+#' @examples
+#'
+filter.bed <- function(bed, bin_data) {
+  # Remove duplicated reads that aren't caught by the standard dedup tools
+  bed <- bed[with(bed, order(Chr, Start, End, Strandedness)),]
+  tmp.start <- paste(bed$Chr, bed$Start, bed$Strandedness)
+  tmp.end <- paste(bed$Chr, bed$End, bed$Strandedness)
+
+  are.duplicated <- duplicated(tmp.start, fromLast = TRUE) | duplicated(tmp.end)
+  bed <- bed[!are.duplicated,]
+
+  # Remove reads that are in bins with low mappability
+  hq_bins <- GenomicRanges::GRanges(paste0('chr', bin_data$chromosome),
+                                    IRanges::IRanges(bin_data$start, bin_data$end))
+  bed_ranges <- GenomicRanges::GRanges(bed$Chr, IRanges::IRanges(bed$Start, bed$End))
+  #bed <- bed[bed_ranges %over% hq_bins,]
+  bed <- bed[GenomicRanges::countOverlaps(bed_ranges, hq_bins)>0,]
+  return(bed)
+}
+
+#' extractStrandedness
 #'
 #' @param readName name for each read pulled from the bed file
 #' @param n number of characters to count back to get strandedness
 #'
 #' @return read orientation from the last n characters of the read name
-#' @export
 #'
 #' @examples
 extractStrandedness <- function(readName, n){
-  readName.count <- base::nchar(readName)
-  return(base::substr(readName, readName.count - n + 1, readName.count))
+  readName.count <- nchar(readName)
+  return(substr(readName, readName.count - n + 1, readName.count))
 }
 
-#' Title
+#' count.doublets
 #'
 #' @param bed a data frame formatted as a bed file with read positions must be filtered by remove.duplicates
 #' @param tag.overlap smallest length of the tagmentation read overlap (default 9 nt)
 #'
 #' @return
-#' @export
 #'
 #' @examples
-count.doublets <- function(bed, tag.overlap = 9){
+count.doublets <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
   read.starts <- GenomicRanges::GRanges(seqnames = bed$Chr,
-                         ranges = IRanges::IRanges(start = bed$Start+tag.overlap, end = bed$Start+tag.overlap))
+                         ranges = IRanges::IRanges(start = bed$Start+min.tag.overlap, end = bed$Start+max.tag.overlap))
   read.ends <- GenomicRanges::GRanges(seqnames = bed$Chr,
                        ranges = IRanges::IRanges(start = bed$End, end = bed$End))
 
@@ -78,7 +284,7 @@ count.doublets <- function(bed, tag.overlap = 9){
   return(num.doublets/nrow(bed))
 }
 
-#' Title
+#' count.overlaps
 #'
 #' @param bed a data frame formatted as a bed file with read positions must be filtered by remove.duplicates
 #' @param min.size minimum read length (default 50 nt)
@@ -118,6 +324,25 @@ count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10
   return(data.out)
 }
 
+#' calc.breadth
+#'
+#' @param bed imported bed data frame from bedpe object
+#'
+#' @return the breadth of the bed file
+#'
+#' @examples
+calc.breadth <- function(bed){
+  read_ranges <- GenomicRanges::GRanges(seqnames = bed$Chr,
+                                        ranges = IRanges::IRanges(start = bed$Start, end = bed$End))
+  coverage <- GenomicRanges::coverage(read_ranges)
+
+  breadth <- 0
+  for(i in 1:length(coverage)){
+    breadth <- breadth + sum(coverage[[i]]@lengths[coverage[[i]]@values>0])
+  }
+  return(breadth)
+}
+
 #' Title
 #'
 #' @param sample path to bedpe file
@@ -130,40 +355,50 @@ count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10
 #'
 #' @examples
 estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000){
-  bed <- load.preprocess.bed(sample, min_length, max_length)
-  bed <- remove.duplicates(bed)
 
+  # Create the bin aggregated data to identify regions where we want to measure the overlap statistics
+  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = 'hg38')
+  bin_data <- bins@data
+  bin_data$use[bin_data$mappability < 90 | bin_data$bases < 90] <- FALSE
+  bin_data <- bin_data[bin_data$use,]
+  bin_data$binName <- paste0('chr', bin_data$chromosome, '_', bin_data$start)
+
+  # Load bed and get QC and Ploidy Estimation Metrics
+  bed <- load.preprocess.bed(sample, bin_data, min_length, max_length)
   prop_doublets <- count.doublets(bed)
   bed <- count.overlaps(bed, min.size = 100, max.size = max_length)
 
-  bed$binStart <- base::floor(bed$Start/binSize)*binSize+1
-  bed$binName <- base::paste0(bed$Chr, '_', bed$binStart)
-
+  # Merge the bed data with the bin data
+  bed$binStart <- floor(bed$Start/binSize)*binSize+1
+  bed$binName <- paste0(bed$Chr, '_', bed$binStart)
   bed_aggregate <- stats::aggregate(bed[,c("Count.Upstream",
                                            "Norm.Count.Upstream",
                                            "Count.Over",
                                            "Norm.Count.Over")],
                              by = list(bed$binName), function(x) mean(x, na.rm = T))
   bed_counts <- stats::aggregate(bed$binName, by = list(bed$binName), length)
-  bed_breadth <- stats::aggregate(bed$Length, by = list(bed$binName), function(x) sum(x, na.rm = T))
+  bed_coverage <- stats::aggregate(bed$Length, by = list(bed$binName), function(x) sum(x, na.rm = T))
 
-
-  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = 'hg38')
-  bin_data <- bins@data
-  bin_data$binName <- base::paste0('chr', bin_data$chromosome, '_', bin_data$start)
-  bin_data$use[bin_data$mappability < 90 | bin_data$bases < 90] <- FALSE
-
-  match_idx <- base::match(bin_data$binName, bed_aggregate$Group.1)
-  bin_data <- base::cbind(bin_data, bed_aggregate[match_idx,])
+  match_idx <- match(bin_data$binName, bed_aggregate$Group.1)
+  bin_data <- cbind(bin_data, bed_aggregate[match_idx,])
   bin_data$reads <- bed_counts$x[match_idx]
-  bin_data$breadth <- bed_breadth$x[match_idx]
-  bin_data$breadth <- bin_data$breadth/binSize
 
-  coverage <- bin_data$Coverage
-  coverage[!is.finite(coverage)] <- NA
-  coverage <- mean(coverage, na.rm = T)
+  bin_data$coverage <- bed_coverage$x[match_idx]
+  bin_data$prop_doublets <- prop_doublets
+
+  breadth <- calc.breadth(bed)
+
 
   bin_data <- bin_data[,!grepl('Group', colnames(bin_data))]
-  bin_data <- bin_data[bin_data$use,]
-  bin_data <- bin_data[!is.na(bin_data$reads),]
+
+
+  out <- data.frame(ratio = mean(bin_data$Norm.Count.Over)/mean(bin_data$Norm.Count.Upstream),
+                    breadth = calc.breadth(bed),
+                    coverage = sum(bin_data$coverage, na.rm = T),
+                    prop_doublet_tags = prop_doublets,
+                    avg_length = mean(bed$Length, na.rm = T),
+                    overlap_genome_size = nrow(bin_data)*binSize,
+                    ploidy_readCount = nrow(bed))
+  out$est_ploidy <- 1/(1-out$ratio)
+  return(out)
 }
