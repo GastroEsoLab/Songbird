@@ -21,6 +21,7 @@ Imports:
     QDNAseq.hg19,
     QDNAseq.hg38,
     Rphenograph,
+    scico,
     SingleCellExperiment,
     stats,
     transport,

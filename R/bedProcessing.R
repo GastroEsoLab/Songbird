@@ -149,7 +149,8 @@ calc_madOffset <- function(values){
 ubh_segment <- function(reads, use, min_svSize){
   out <- rep(NA, length(reads))
   use_idxs <- which(use)
-  reads <- reads[use]
+  reads[is.na(reads)] <- 0
+  #reads <- reads[use]
 
   # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
   tail_length <- round(length(reads)*0.1)
@@ -175,8 +176,9 @@ ubh_segment <- function(reads, use, min_svSize){
   optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
   reconstr <- unbalhaar::reconstr.bu(optim_UBH)*sd + mean
   reconstr <- reconstr[1:length(reads)]
-  out[use] <- reconstr
-  return(out)
+  #out[use] <- reconstr
+  out <- reconstr
+  return(reconstr)
 }
 
 
@@ -395,7 +397,7 @@ estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000)
   bin_data <- bin_data[,!grepl('Group', colnames(bin_data))]
 
 
-  out <- data.frame(ratio = mean(bin_data$Norm.Count.Over)/mean(bin_data$Norm.Count.Upstream),
+  out <- data.frame(ratio = mean(bin_data$Norm.Count.Over, na.rm = T)/mean(bin_data$Norm.Count.Upstream, na.rm = T),
                     breadth = calc.breadth(bed),
                     coverage = sum(bin_data$coverage, na.rm = T),
                     prop_doublet_tags = prop_doublets,
