@@ -28,8 +28,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Make UBH Matrix and add to scExperiment Class
   - [x] Cluster cells using breakpoint matrix + Phenograph
   - [x] Correct Ploidy Estimation & Perform WGD Detection
-  - [-] Produce Final Quality Score
-    - Our best cells have middling quality scores in the PBMC dataset
+  - [x] Produce Final Quality Score
   - [x] Make Copy Matrix
   - [x] Minimal Vignette
 
