@@ -30,6 +30,6 @@ Wow time passed
   - [x] Instantiate scExperiment Class and populate with metadata and Read/GC Corrected matrix
   - [x] Make UBH Matrix and add to scExperiment Class
   - [x] Calculate Ploidy from matching bedpe file and add quality score
-  - [ ] Cluster cells using the breakpoints + phenograph
-  - [ ] For each cluster identify WGD cells
-  - [ ] Make copy matrix
+  - [x] Cluster cells using the breakpoints + phenograph
+  - [x] For each cluster identify WGD cells
+  - [x] Make copy matrix
