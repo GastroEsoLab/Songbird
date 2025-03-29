@@ -62,7 +62,7 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
   peak <- dens$x[which.max(dens$y)]
 
   # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-  modeState <- seq(round(expected_ploidy)-1, round(expected_ploidy)+1)
+  modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
   modeState <- modeState[modeState>0]
 
   fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
