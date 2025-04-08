@@ -3,19 +3,20 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 
 # To Do List
 - [ ] QC Plotting Functions
-  - [ ] Heatmap plotter
-  - [ ] Cell Plotter (reads, segmentation, cn)
+  - [x] Heatmap plotter
+  - [x] Cell Plotter (reads, segmentation, cn)
   - [ ] Quality Scorer
   - [ ] Reads per CN
   - [ ] UMAP and PCA plotter
 - [ ] minimize dependencies? (Rphenograph is github install only...)
-- [ ] Run on both hg19 and hg38 (and T2T?)
+- [x] Run on both hg19 and hg38 (and T2T?)
 - [ ] Allow to skip WGD & Subclone ID
-- [ ] Allow to skip any ploidy estimation (Default to CN 2 or a provided value)
+- [x] Allow to skip any ploidy estimation (Default to CN 2 or a provided value)
 - [ ] Build out Vignette and Documentation
 - [ ] Allow recalibration of correction factor for ploidy estimation
-- [ ] Add Parallel processing(??)
+- [ ] Add Parallel processing
 - [ ] Parameter checks for all user facing functions
+- [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
 
 
 # To Done (almost) list!
