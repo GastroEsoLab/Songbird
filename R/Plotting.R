@@ -148,3 +148,54 @@ gen_annobar <- function(values, orientation, ylim = NULL){
 get_binMetadata <- function(sce){
   return(as.data.frame(sce@rowRanges@elementMetadata))
 }
+
+
+
+#' Title
+#'
+#' @param sce
+#' @param cell_id
+#' @param assay
+#' @param return
+#'
+#' @return
+#' @export
+#'
+#' @examples
+plot_cell <- function(sce, cell_id, assay, return = F){
+
+  data <- assay(sce, entry)
+  data <- data[, cell_id]
+
+  bin_data <- get_binMetadata(sce)
+  data <- data.frame(expr = data, chrom = bin_data$chr)
+
+  spacer <- data.frame(expr = rep(NA, 50), chrom = 'spacer')
+  while(i < nrow(data)-1){
+    if(data$chrom[i] != data$chrom[i+1]){
+      data <- rbind(data[1:i,], spacer, data[(i+1):nrow(data),])
+      print(data$chrom[i:(i+12)])
+      i <- i + nrow(spacer)
+    }
+    i <- i + 1
+  }
+  data$pos <- seq(1, nrow(data))
+
+  chr_pos <- c()
+  for(chr in unique(data$chrom)){
+    avg_position <- mean(data$pos[data$chrom == chr])
+    chr_pos <- rbind(chr_pos, data.frame(pos = avg_position, chrom = chr))
+  }
+
+  p <- ggplot2::ggplot(data, ggplot2::aes(x = pos, y = expr)) +
+    ggplot2::geom_point() +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(x = 'Chromosome', y = names(assay), title = cell) +
+    ggplot2::scale_x_continuous(breaks = chr_pos$pos, labels = chr_pos$chrom)
+
+  if(return){
+    return(p)
+  } else {
+    plot(p)
+  }
+}

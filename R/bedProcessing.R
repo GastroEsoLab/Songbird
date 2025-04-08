@@ -10,7 +10,7 @@
 #' @export
 #'
 #' @examples
-process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000){
+process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9){
   min.svSize <- min.svSize/bin.size
 
   reads <- Songbird::load_cell(bam, binSize = bin.size)
@@ -26,7 +26,7 @@ process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6,
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    out <- Songbird::estimate.ploidy(sample = bedpe, binSize = bin.size, min_length = min_length, max_length = max_length)
+    out <- Songbird::estimate.ploidy(sample = bedpe, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap)
     reads.cor$ratio <- out$ratio
     reads.cor$est_ploidy <- out$est_ploidy
     reads.cor$breadth <- out$breadth
@@ -207,6 +207,13 @@ load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_lengt
 
   bed <- bed[(bed$Length > min_length) & (bed$Length < max_length),]
   bed$Strandedness <- extractStrandedness(bed$Name, 3)
+
+  # Grab the first three characters of the chromosome names to see if its prefixed properly. If not add chr
+  chr_prefix <- substr(bed$Chr, 1, 3)
+  if(sum(grepl('chr', chr_prefix)) == 0){
+    bed$Chr <- paste0('chr', bed$Chr)
+  }
+
   bed <- bed[grep('(chr[0-9]+|X|Y)$', bed$Chr),]
 
   bed <- filter.bed(bed, bin_data)
@@ -359,7 +366,7 @@ calc.breadth <- function(bed){
 #' @export
 #'
 #' @examples
-estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000){
+estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000, tag_overlap = 9){
 
   # Create the bin aggregated data to identify regions where we want to measure the overlap statistics
   bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = 'hg38')
@@ -370,8 +377,13 @@ estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000)
 
   # Load bed and get QC and Ploidy Estimation Metrics
   bed <- load.preprocess.bed(sample, bin_data, min_length, max_length)
-  prop_doublets <- count.doublets(bed)
-  bed <- count.overlaps(bed, min.size = 100, max.size = max_length)
+  if(nrow(bed)==0){
+    out <- data.frame(ratio = NA, breadth = NA, coverage = NA, prop_doublet_tags = NA,
+                      avg_length = NA, overlap_genome_size = NA, ploidy_readCount = NA)
+    return(out)
+  }
+  prop_doublets <- count.doublets(bed, min.tag.overlap = tag_overlap, max.tag.overlap = tag_overlap+1)
+  bed <- count.overlaps(bed, min.size = 100, max.size = max_length, tag.overlap = tag_overlap)
 
   # Merge the bed data with the bin data
   bed$binStart <- floor(bed$Start/binSize)*binSize+1
