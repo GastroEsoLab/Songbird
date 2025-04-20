@@ -53,13 +53,14 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
   }
 
   final_cn <- rep(NA, length(means))
+  all_means <- means
   use_idx <- which(use)
   means <- means[use]
   nBins <- length(means)
 
   # Identify largest peak and propose CN state
   dens <- stats::density(means)
-  peak <- dens$x[which.max(dens$y)]
+  peak <- abs(dens$x[which.max(dens$y)])
 
   # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
   modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
@@ -76,6 +77,9 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
     # Get the total number of states (+1 to account for 0 copy regions) in the dataset
     # given uniploid state & score the gaussians for each
     numStates <- max(round(means/uniploid))+1
+    if(numStates>1000){
+      numStates <- 1000
+    }
     scores <- matrix(nrow = numStates, ncol = nBins)
     for(j in 1:numStates){
       scores[j,] <- stats::dnorm(means,
@@ -94,13 +98,16 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
     stateScores <- c(stateScores, sum(stats::dnorm(mean = states-1, sd = sigma, expected_ploidy, log = T)))
     fitStates[i,] <- states - 1
   }
+
+  # Get the highest scoring fit and apply it to the good bins
   stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
   fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
   bestFit <- which.max(stateScores + fitScores)
+  final_cn[use_idx] <- fitStates[bestFit,]
 
-  # replace means with closest values
-  cn <- fitStates[bestFit,]
-  final_cn[use_idx] <- cn
+  # get true uniploid & apply to the remaining bins
+  best_uniploid <- peak/modeState[bestFit]
+  final_cn[!use_idx] <- round(all_means[!use_idx]/best_uniploid)
   return(final_cn)
 }
 

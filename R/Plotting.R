@@ -67,9 +67,11 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
     names(lt) <- names(cell_attribs)
     cell_anno <- do.call(ComplexHeatmap::rowAnnotation, lt)
 
-    for(i in 1:length(ha@anno_list)){
+    for(i in 1:length(cell_anno@anno_list)){
       cell_anno@anno_list[[i]]@name_param$rot <- 45
     }
+  }else{
+    cell_anno <- cell_attribs
   }
 
   # Repeat for the bin attribs
@@ -91,6 +93,8 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
     lt <- lapply(metadata[,bin_attribs,drop=F], function(x) gen_annobar(x, 'column'))
     names(lt) <- names(bin_attribs)
     bin_anno <- do.call(ComplexHeatmap::HeatmapAnnotation, lt)
+  }else{
+    bin_anno <- bin_attribs
   }
 
 
