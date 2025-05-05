@@ -10,10 +10,10 @@
 #' @export
 #'
 #' @examples
-process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9){
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9, ext_correction = NULL){
   min.svSize <- min.svSize/bin.size
 
-  reads <- Songbird::load_cell(bam, binSize = bin.size)
+  reads <- Songbird::load_cell(bam, binSize = bin.size, genome)
   reads.cor <- Songbird::convert_long(reads)
   num_reads <- c(sum(reads.cor$uncorrected.reads))
 
@@ -26,7 +26,7 @@ process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6,
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    out <- Songbird::estimate.ploidy(sample = bedpe, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap)
+    out <- Songbird::estimate.ploidy(sample = bedpe, genome = genome, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, use_external = ext_correction)
     reads.cor$ratio <- out$ratio
     reads.cor$est_ploidy <- out$est_ploidy
     reads.cor$breadth <- out$breadth
@@ -49,10 +49,23 @@ process.cell <- function(bam, bedpe = NULL, bin.size = 500000, min.svSize = 1e6,
 #' @export
 #'
 #' @examples
-correct_ploidy <- function(ploidy, prop_doublets, coverage){
+correct_ratio <- function(ratio, prop_doublets, use_external = NULL){
   # Right now its just a place holder function
-  var = 1 + 1
-  return(ploidy)
+  if(is.null(use_external)){
+    corr_data <- Songbird::correction_data
+  }
+  else{
+    corr_data <- read.table(use_external, header = T, sep = '\t')
+  }
+
+  # Process the correction table with a known ploidy
+  corr_data$true_ratio <- (corr_data$ploidy-1)/corr_data$ploidy
+  corr_data$correction <- corr_data$est_ratio/corr_data$true_ratio
+  cor_function <- stats::lm(correction ~ doublet_prop, data = corr_data)
+
+  # Predict the correction factors for each ratio using the linear function
+  correction_factor <- stats::predict(cor_function, newdata = data.frame(doublet_prop = prop_doublets))
+  return(ratio/correction_factor)
 }
 
 #' convert_long
@@ -92,12 +105,13 @@ convert_long <- function(reads){
 #' @return
 #'
 #' @examples
-load_cell <- function(bamPath, binSize){
+load_cell <- function(bamPath, binSize, genome){
   binSize <- binSize/1000
 
-  bins <- QDNAseq::getBinAnnotations(binSize = binSize, genome = 'hg38')
+  bins <- QDNAseq::getBinAnnotations(binSize = binSize, genome = genome)
+  bins@data$mappability <- as.numeric(bins@data$mappability)*100
   reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
-  reads <- QDNAseq::applyFilters(reads, residual = T, blacklist = T)
+  reads <- QDNAseq::applyFilters(reads, residual = F, blacklist = T)
   reads <- QDNAseq::estimateCorrection(reads)
   reads.cor <- QDNAseq::correctBins(reads)
   return(list(reads = reads, reads.cor = reads.cor))
@@ -113,7 +127,6 @@ load_cell <- function(bamPath, binSize){
 #' @examples
 wh_transform <- function(vals, sv_binSize = 25){
   sv_freq <- floor(length(vals)/sv_binSize)
-
   transformation <- gsignal::fwht(vals)
   mask <- rep(1, length(transformation))
   mask[sv_freq:length(transformation)] <- 0
@@ -147,10 +160,7 @@ calc_madOffset <- function(values){
 #'
 #' @examples
 ubh_segment <- function(reads, use, min_svSize){
-  out <- rep(NA, length(reads))
-  use_idxs <- which(use)
   reads[is.na(reads)] <- 0
-  #reads <- reads[use]
 
   # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
   tail_length <- round(length(reads)*0.1)
@@ -176,8 +186,6 @@ ubh_segment <- function(reads, use, min_svSize){
   optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
   reconstr <- unbalhaar::reconstr.bu(optim_UBH)*sd + mean
   reconstr <- reconstr[1:length(reads)]
-  #out[use] <- reconstr
-  out <- reconstr
   return(reconstr)
 }
 
@@ -366,11 +374,19 @@ calc.breadth <- function(bed){
 #' @export
 #'
 #' @examples
-estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000, tag_overlap = 9){
+estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length = 1000, tag_overlap = 9, use_external = NULL){
+  if(genome == 'hg19'){
+    stop("hg19 is not supported. Please align your data to chm13v2 (best performance) or hg38 (good performance)")
+  }
 
   # Create the bin aggregated data to identify regions where we want to measure the overlap statistics
-  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = 'hg38')
+  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = genome)
   bin_data <- bins@data
+
+  if(genome == 'chm13v2'){
+    bin_data$mappability <- as.numeric(bin_data$mappability) * 100
+  }
+
   bin_data$use[bin_data$mappability < 90 | bin_data$bases < 90] <- FALSE
   bin_data <- bin_data[bin_data$use,]
   bin_data$binName <- paste0('chr', bin_data$chromosome, '_', bin_data$start)
@@ -416,6 +432,12 @@ estimate.ploidy <- function(sample, binSize, min_length = 50, max_length = 1000,
                     avg_length = mean(bed$Length, na.rm = T),
                     overlap_genome_size = nrow(bin_data)*binSize,
                     ploidy_readCount = nrow(bed))
-  out$est_ploidy <- 1/(1-out$ratio)
+
+  if(genome == 'hg38'){
+    out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
+  }else{
+    out$corrected_ratio <- out$ratio
+  }
+  out$est_ploidy <- 1/(1-out$corrected_ratio)
   return(out)
 }

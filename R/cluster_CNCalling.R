@@ -111,23 +111,6 @@ fitMeans <- function(means, use, expected_ploidy, sigma = 0.5){
   return(final_cn)
 }
 
-#' Title
-#'
-#' @param sbird_sce
-#'
-#' @return
-#' @export
-#'
-#' @examples
-identify_subclones <- function(sbird_sce){
-  # Cluster the cells using the changepoint matrix and sce
-  change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, 'segmented'), use_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use)
-  SingleCellExperiment::reducedDim(sbird_sce, 'changepoint_mtx') <- change_mtx
-
-  clust_res <- Rphenograph::Rphenograph(change_mtx, k = 30)
-  sbird_sce$subclone <- clust_res[[2]]$membership
-  return(sbird_sce)
-}
 
 #' Title
 #'
@@ -228,60 +211,3 @@ create_sce <- function(res){
   return(sbird_sce)
 }
 
-# Apply a gaussian kernel to the change matrix
-#' Title
-#'
-#' @param matrix the inputted matrix to smooth over
-#' @param n_neighbors number of adjacent bins to smooth with
-#'
-#' @return
-#' @export
-#'
-#' @examples
-gauss_kernel <- function(matrix, n_neighbors){
-  # Check that n_neighbors is odd
-  if(n_neighbors %% 2 == 0){
-    stop('n_neighbors must be odd')
-  }
-
-  # Define a linear gaussian kernel
-  kernel <- c()
-  for(i in 1:n_neighbors){
-    kernel <- c(kernel, stats::dnorm(i, mean = (n_neighbors + 1)/2, sd = n_neighbors/6))
-  }
-  kernel <- kernel/max(kernel)
-  span <- n_neighbors%/%2
-
-  # Apply the kernel to the matrix
-  kernel_mtx <- matrix(0, nrow = nrow(matrix), ncol = ncol(matrix)-span+1)
-  max_idx <- 0
-  for(i in 1:nrow(matrix)){
-    for(j in (span+1):(ncol(matrix)-span)){
-      kernel_mtx[i,j] <- sum(matrix[i, (j-span):(j+span)] * kernel)
-    }
-  }
-  return(kernel_mtx)
-}
-
-#' Title
-#'
-#' @param matrix the inputted matrix to identify changepoints from
-#' @param use_mask bins to use
-#'
-#' @return
-#' @export
-#'
-#' @examples
-generate_changepoint_matrix <- function(matrix, use_mask){
-  # Find the change points in the mixed matrix
-  matrix <- t(matrix)[,use_mask]
-  change_mtx <- t(apply(matrix, 1, diff))
-
-  # Smooth the change matrix by applying a gaussian kernel
-  kernel_mtx <- round(gauss_kernel(change_mtx, 5), 2)
-
-  # Select change points observed in more than 10% of cells
-  bins_to_use <- which(colSums(abs(kernel_mtx)>0.1)>(nrow(kernel_mtx)*0.1))
-  kernel_mtx <- kernel_mtx[,bins_to_use]
-  return(kernel_mtx)
-}

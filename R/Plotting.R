@@ -132,13 +132,16 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
 #'
 #' @examples
 gen_annobar <- function(values, orientation, ylim = NULL){
-
-  if(is.null(ylim)){
-    ylim <- minMax <- stats::quantile(values, c(0.01, .99), na.rm = T)
+  if(!is.numeric(values)){
+    return(ComplexHeatmap::anno_simple(values, which = orientation))
+  }else{
+    if(is.null(ylim)){
+      ylim <- minMax <- stats::quantile(values, c(0.01, .99), na.rm = T)
+    }
+    values[values > ylim[2]] <- ylim[2]
+    values[values < ylim[1]] <- ylim[1]
+    return(ComplexHeatmap::anno_barplot(values, ylim = ylim, which = orientation))
   }
-  values[values > ylim[2]] <- ylim[2]
-  values[values < ylim[1]] <- ylim[1]
-  return(ComplexHeatmap::anno_barplot(values, ylim = ylim, which = orientation))
 }
 
 
