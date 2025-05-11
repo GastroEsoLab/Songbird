@@ -13,7 +13,7 @@
 process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9, ext_correction = NULL){
   min.svSize <- min.svSize/bin.size
 
-  reads <- Songbird::load_cell(bam, binSize = bin.size, genome)
+  reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- Songbird::convert_long(reads)
   num_reads <- c(sum(reads.cor$uncorrected.reads))
 
@@ -106,12 +106,11 @@ convert_long <- function(reads){
 #'
 #' @examples
 load_cell <- function(bamPath, binSize, genome){
-  binSize <- binSize/1000
 
-  bins <- QDNAseq::getBinAnnotations(binSize = binSize, genome = genome)
+  bins <- QDNAseq::getBinAnnotations(binSize = binSize/1000, genome = genome)
   bins@data$mappability <- as.numeric(bins@data$mappability)*100
   reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
-  reads <- QDNAseq::applyFilters(reads, residual = F, blacklist = T)
+  #reads <- QDNAseq::applyFilters(reads, residual = F, blacklist = T)
   reads <- QDNAseq::estimateCorrection(reads)
   reads.cor <- QDNAseq::correctBins(reads)
   return(list(reads = reads, reads.cor = reads.cor))
@@ -228,23 +227,6 @@ load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_lengt
   return(bed)
 }
 
-#' remove.duplicates
-#'
-#' @param bed a data frame formatted as a bed file with read positions
-#'
-#' @return a data frame with duplicate reads (identical start or end sites) removed
-#'
-#' @examples
-#'
-remove.duplicates <- function(bed) {
-  bed <- bed[with(bed, order(Chr, Start, End, Strandedness)),]
-  tmp.start <- paste(bed$Chr, bed$Start, bed$Strandedness)
-  tmp.end <- paste(bed$Chr, bed$End, bed$Strandedness)
-
-  are.duplicated <- duplicated(tmp.start, fromLast = TRUE) | duplicated(tmp.end)
-  return(bed[!are.duplicated,])
-}
-
 #' filter.bed
 #'
 #' @param bed a data frame formatted as a bed file with read positions
@@ -287,7 +269,7 @@ extractStrandedness <- function(readName, n){
 
 #' count.doublets
 #'
-#' @param bed a data frame formatted as a bed file with read positions must be filtered by remove.duplicates
+#' @param bed a data frame formatted as a bed file with read positions must be filtered by filter.bed
 #' @param min.tag.overlap smallest length of the tagmentation read overlap (default 9 nt)
 #' @param max.tag.overlap largest length of the tagmentation read overlap (default 10 nt)
 #'
@@ -306,7 +288,7 @@ count.doublets <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
 
 #' count.overlaps
 #'
-#' @param bed a data frame formatted as a bed file with read positions must be filtered by remove.duplicates
+#' @param bed a data frame formatted as a bed file with read positions must be filtered by filter.bed
 #' @param min.size minimum read length (default 50 nt)
 #' @param max.size maximum read length (default 1000 nt)
 #' @param tag.overlap largest length of the tagmentation read overlap (default 10 nt)
@@ -418,12 +400,7 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
 
   bin_data$coverage <- bed_coverage$x[match_idx]
   bin_data$prop_doublets <- prop_doublets
-
-  breadth <- calc.breadth(bed)
-
-
   bin_data <- bin_data[,!grepl('Group', colnames(bin_data))]
-
 
   out <- data.frame(ratio = mean(bin_data$Norm.Count.Over, na.rm = T)/mean(bin_data$Norm.Count.Upstream, na.rm = T),
                     breadth = calc.breadth(bed),

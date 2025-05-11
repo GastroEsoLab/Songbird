@@ -24,8 +24,8 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [-] CN Caller
   - [x] read in bam file using qDNASeq
   - [x] Calculate GC+Map Correction
-  - [ ] Calculate per cell ploidy estimation
-    - [ ] Figure out correction factor (try HG38 scAbsolute)
+  - [x] Calculate per cell ploidy estimation
+    - [x Figure out correction factor (try HG38 scAbsolute)
   - [x] Instantiate scExperiment Class and populate with metadata
   - [x] Make UBH Matrix and add to scExperiment Class
   - [x] Cluster cells using breakpoint matrix + Phenograph
