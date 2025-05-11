@@ -44,12 +44,9 @@ reads_to_matrix <- function(data, column, return_counts = FALSE) {
 #' @export
 #'
 #' @examples
-fitMeans <- function(means, reads, use, expected_ploidy = c(2, 8)){
-  # Estimate noise by normalizing out the segmented regions & taking the stdev
-  sigma <- sd((means-reads)[use], na.rm = T)
-
+fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   # If using the overlap calling pipeline
-  if(length(expected_ploidy)==1){
+  if(!is.na(expected_ploidy)){
     # Abnormal ploidy states are considered diploid
     if(expected_ploidy < 0.5){
       expected_ploidy <- 2
@@ -60,7 +57,7 @@ fitMeans <- function(means, reads, use, expected_ploidy = c(2, 8)){
     modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
     modeState <- modeState[modeState>0]
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
-    modeState <- seq(expected_ploidy[1], expected_ploidy[2])
+    modeState <- seq(2, 8)
   }
 
   final_cn <- rep(NA, length(means))
@@ -138,29 +135,47 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000){
   sbird_sce$wgd <- FALSE
   sbird_sce$corr.ploidy <- NA
   for(subclone in subclones){
+    clone <- sbird_sce$subclone == subclone
+    est_ploidies <- sbird_sce$est_ploidy[clone]
+    readCounts <- sbird_sce$total_reads[clone]
 
-    selector <- sbird_sce$subclone == subclone &
-      sbird_sce$total_reads>min_reads &
-      sbird_sce$est_ploidy > 0 &
-      sbird_sce$est_ploidy < 10 &
-      !is.na(sbird_sce$est_ploidy)
-    est_ploidies <- sbird_sce$est_ploidy[selector]
-    avg_ploidy <- mean(est_ploidies, na.rm = T)
-    if(length(est_ploidies) > 10){
-
-      # Fit a kmeans k=2 to the ploidy estimates to identify wgd cells
-      wgd_clustering <- stats::kmeans(est_ploidies, centers = 2)
-      wgd_index <- which.max(wgd_clustering$centers)
-      if(wgd_clustering$betweenss/wgd_clustering$totss > 0.7){
-        sbird_sce$wgd[selector][wgd_clustering$cluster == wgd_index] <- TRUE
-      }
+    high_qPloidies <- est_ploidies[est_ploidies > 0 & est_ploidies < 10 & is.finite(est_ploidies) & readCounts > min_reads]
+    if(length(high_qPloidies) > 10){
+      sbird_sce$corr.ploidy[clone] <- mean(high_qPloidies, na.rm = T)
+      sbird_sce$corr.ploidy[clone] <- detect_wgd(high_qPloidies, est_ploidies)
+    }else{
+      warning(paste0("Not enough high quality cells to estimate ploidy for subclone: ", subclone, '\nDefaulting to a range from 2-8'))
+      sbird_sce$corr.ploidy[clone] <- NA
     }
-    sbird_sce$corr.ploidy[sbird_sce$subclone == subclone] <- avg_ploidy
   }
   sbird_sce$corr.ploidy[sbird_sce$wgd] <- sbird_sce$corr.ploidy[sbird_sce$wgd]*2
   return(sbird_sce)
 }
 
+#' Title
+#'
+#' @param high_qPloidies
+#' @param all_ploidies
+#'
+#' @return
+#' @export
+#'
+#' @examples
+detect_wgd <- function(high_qPloidies, all_ploidies){
+  wgd_clustering <- stats::kmeans(high_qPloidies, centers = 2)
+  wgd_index <- which.max(wgd_clustering$centers)
+
+  # Find which center each ploidy is closest to and assign
+  distances <- sapply(wgd_clustering$centers, function(x) abs(x - all_ploidies))
+  closest <- apply(distances, 1, which.min)
+  closest[is.na(closest)] <- which.min(wgd_clustering$centers)
+  if(wgd_clustering$betweenss/wgd_clustering$totss > 0.7){
+    wgd_cells <- closest == wgd_index
+  }else{
+    wgd_cells <- rep(FALSE, length(all_ploidies))
+  }
+  return(wgd_cells)
+}
 #' Title
 #'
 #' @param sbird_sce the songbird single cell experiment object
@@ -174,10 +189,16 @@ copyCall <- function(sbird_sce){
   cn_matrix <- c()
   segmented_matrix <- SummarizedExperiment::assay(sbird_sce, 'segmented')
   reads_matrix <- SummarizedExperiment::assay(sbird_sce, 'reads')
+
+  sigmas <- c()
   for(i in 1:ncol(segmented_matrix)){
-    cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], reads_matrix[,i], SummarizedExperiment::rowData(sbird_sce)$overlap_use, sbird_sce$corr.ploidy[i]))
+    use <- SummarizedExperiment::rowData(sbird_sce)$overlap_use
+    sigma <- sd((segmented_matrix[,i]-reads_matrix[,i])[use], na.rm = T)
+    cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], use, sigma, sbird_sce$corr.ploidy[i]))
+    sigmas <- c(sigmas, sigma)
   }
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
+  sbird_sce$bin_noise <- sigmas
   return(sbird_sce)
 }
 
@@ -211,6 +232,45 @@ create_sce <- function(res){
   sbird_sce$overlap_genome_size <- sapply(res, function(x) mean(x$overlap_genome_size))
   sbird_sce$doublet_tag_rate <- sapply(res, function(x) mean(x$prop_doublet_tags, na.rm = T))
   sbird_sce$est_genome_size <- sbird_sce$doublet_tag_rate/sbird_sce$observed_coverage
+
+  # Bin information
+  SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
+  SummarizedExperiment::rowData(sbird_sce)$start <- res[[1]]$start
+  SummarizedExperiment::rowData(sbird_sce)$end <- res[[1]]$end
+  SummarizedExperiment::rowData(sbird_sce)$bin_name <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
+  SummarizedExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
+  SummarizedExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
+  SummarizedExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
+  return(sbird_sce)
+}
+
+#' Title
+#'
+#' @param res
+#'
+#' @return
+#' @export
+#'
+#' @examples
+create_sce_from_res <- function(res){
+  reads <- reads_to_matrix(res, 'reads')
+  counts <- reads_to_matrix(res, 'reads')
+  segmented <- apply(reads, 1, function(x) Songbird::ubh_segment(reads = x, use = TRUE, min_svSize = 2))
+
+  sbird_sce <- SingleCellExperiment::SingleCellExperiment(assays = list(counts = t(counts), reads = t(reads), segmented = t(segmented)))
+
+  # Per cell file information
+  sbird_sce$bam_file <- NA
+  sbird_sce$bedpe_file <- NA
+  sbird_sce$cell_id <- cell_ids
+  sbird_sce$total_reads <- apply(counts, 1, function(x) sum(x, na.rm = T))
+
+  # Cell information derived from just the high quality regions
+  sbird_sce$est_ploidy <- NULL
+  sbird_sce$observed_coverage <- NULL
+  sbird_sce$overlap_genome_size <- NULL
+  sbird_sce$doublet_tag_rate <- NULL
+  sbird_sce$est_genome_size <- NULL
 
   # Bin information
   SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome

@@ -15,6 +15,8 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
 
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- Songbird::convert_long(reads)
+  # Lets try normalizing the read depth?
+  reads.cor$reads <- (reads.cor$reads/sum(reads.cor$reads, na.rm = T))*10000
   num_reads <- c(sum(reads.cor$uncorrected.reads))
 
   # Get mode CN indices

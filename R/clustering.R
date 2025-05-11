@@ -6,7 +6,8 @@
 #' @export
 #'
 #' @examples
-identify_subclones <- function(sbird_sce, assay = 'segmented', k = 40, method = inv_manhattan){
+identify_subclones <- function(sbird_sce, assay = 'segmented', k = 40, method = inv_manhattan, min_size = 5, seed = 1234){
+  set.seed(seed)
   # Cluster the cells using the changepoint matrix and sce
   change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay), use_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use)
   SingleCellExperiment::reducedDim(sbird_sce, paste0(assay, '_changepoint')) <- change_mtx
@@ -17,6 +18,12 @@ identify_subclones <- function(sbird_sce, assay = 'segmented', k = 40, method = 
 
   # perform clustering
   membership <- clustering(knn_matrix = knn_matrix, feat_matrix = change_mtx, method = method)
+
+  # Clusters under min_size are marked as 0
+  subclones <- unique(membership)
+  subclone_counts <- sapply(subclones, function(x) sum(membership == x))
+  membership[membership %in% subclones[subclone_counts < min_size]] <- 0
+
   sbird_sce$subclone <- membership
   return(sbird_sce)
 }

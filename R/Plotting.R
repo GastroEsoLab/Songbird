@@ -206,3 +206,68 @@ plot_cell <- function(sce, cell_id, assay, return = F){
     plot(p)
   }
 }
+
+#' Title
+#'
+#' @param sbird_sce
+#' @param cell
+#' @param chr
+#' @param return_plot
+#'
+#' @return
+#' @export
+#'
+#' @examples
+plot_cell <- function(sbird_sce, cell, chr = NULL, return_plot = FALSE){
+  copy_mtx <- SummarizedExperiment::assay(sbird_sce, 'copy')
+  reads_mtx <- SummarizedExperiment::assay(sbird_sce, 'reads')
+
+  dat <- data.frame(copy = copy_mtx[,colnames(copy_mtx)==cell,drop=T],
+                    reads = reads_mtx[,colnames(reads_mtx)==cell,drop=T],
+                    bin_number = seq(1, nrow(reads_mtx)),
+                    bin_name = rownames(reads_mtx))
+  dat$outlier <- dat$copy > quantile(dat$copy, 0.95, na.rm = T)
+
+  # Set plotting max based on outliers
+  ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
+
+  # Scale the reads to fit on the plot grid
+  dat$deviation <- dat$copy/dat$reads
+  deviations <- dat$deviation
+  deviations <- deviations[is.finite(deviations)]
+  dat$adj_reads <- dat$reads*mean(deviations)
+
+  colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
+              '#d6804f', '#b3402e', '#821010', '#6a0936',
+              '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
+  names(colors) <- c(0:11)
+
+  # Get the plotting position for the chromsomes
+  dat$chr <- gsub('^([0-9]+|X|Y)_.*', '\\1', dat$bin_name)
+  chr_labels <- unique(dat$chr)
+  chr_locs <- sapply(chrs, function(x) mean(which(dat$chr == x)))
+  border_locs <- sapply(chrs, function(x) max(which(dat$chr == x)))
+  border_locs <- border_locs[1:(length(border_locs)-1)]
+  all_locs <- c(chr_locs, border_locs)
+  all_labels <- c(chr_labels, rep('', length(border_locs)))
+  all_tics <- c(rep(NA, length(chr_locs)), rep('black', length(border_locs)))
+
+  if(!is.null(chr)){dat <- dat[dat$chr==chr,]}
+  p <- ggplot2::ggplot(dat, aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
+    ggplot2::geom_point(aes(y = copy)) +
+    ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors) +
+    ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
+    ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + theme_classic() +
+    ggplot2::theme(axis.ticks.x = element_line(color = all_tics))
+  #ggplot2::scale_x_continuous(name = 'Chromosome', breaks = chr_locs, labels = chrs) + theme_classic() +
+  #ggplot2::theme(axis.ticks.x = element_line(color = c(rep(NA, length(border_ticks)))))
+
+
+  #scale_x_continuous(breaks = c(sort(unique(data$x)), x_tick),
+  #                   labels = c(sort(unique(data$name)), rep(c(""), len))) +
+  #  theme(axis.ticks.x = element_line(color = c(rep(NA, len - 1), rep("black", len))))
+
+  if(return_plot){return(p)}
+  else{plot(p)}
+}
+
