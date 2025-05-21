@@ -6,7 +6,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Heatmap plotter
   - [x] Cell Plotter (reads, segmentation, cn)
   - [ ] Quality Scorer
-  - [ ] Reads per CN
+  - [x] Reads per CN
   - [ ] UMAP and PCA plotter
 - [x] minimize dependencies? (Rphenograph is github install only...)
 - [x] Run on both hg38 and T2T
