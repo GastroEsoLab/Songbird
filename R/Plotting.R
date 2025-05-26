@@ -19,7 +19,8 @@
 #' @examples
 plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
                          rowClust = T, use_raster = TRUE, bin_attribs = NULL, return = FALSE,
-                         row_title = NULL, plot_title = NULL, legend_title = NULL){
+                         row_title = NULL, plot_title = NULL, legend_title = NULL,
+                         show_cellNames = FALSE){
 
   # Extract the matrix and split by chromosomes
   matrix <- t(SummarizedExperiment::assay(sce, assay_name))
@@ -34,7 +35,7 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
                                             "21\n", "\n22", "X\n", "\nY" ))
 
   # Set colormap
-  if(assay_name == 'copy'){
+  if(grepl('copy', assay_name)){
     colScale <- circlize::colorRamp2(breaks = 0:11,
                                      colors = c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
                                                 '#d6804f', '#b3402e', '#821010', '#6a0936',
@@ -102,7 +103,7 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
   p <- ComplexHeatmap::Heatmap(matrix,
                cluster_columns = F,
                cluster_rows = T,
-               show_row_names = F,
+               show_row_names = show_cellNames,
                show_column_names = F,
                column_split = chr_names,
                show_row_dend = F,
@@ -156,57 +157,6 @@ get_binMetadata <- function(sce){
   return(as.data.frame(sce@rowRanges@elementMetadata))
 }
 
-
-
-#' Title
-#'
-#' @param sce
-#' @param cell_id
-#' @param assay
-#' @param return
-#'
-#' @return
-#' @export
-#'
-#' @examples
-plot_cell <- function(sce, cell_id, assay, return = F){
-
-  data <- assay(sce, entry)
-  data <- data[, cell_id]
-
-  bin_data <- get_binMetadata(sce)
-  data <- data.frame(expr = data, chrom = bin_data$chr)
-
-  spacer <- data.frame(expr = rep(NA, 50), chrom = 'spacer')
-  while(i < nrow(data)-1){
-    if(data$chrom[i] != data$chrom[i+1]){
-      data <- rbind(data[1:i,], spacer, data[(i+1):nrow(data),])
-      print(data$chrom[i:(i+12)])
-      i <- i + nrow(spacer)
-    }
-    i <- i + 1
-  }
-  data$pos <- seq(1, nrow(data))
-
-  chr_pos <- c()
-  for(chr in unique(data$chrom)){
-    avg_position <- mean(data$pos[data$chrom == chr])
-    chr_pos <- rbind(chr_pos, data.frame(pos = avg_position, chrom = chr))
-  }
-
-  p <- ggplot2::ggplot(data, ggplot2::aes(x = pos, y = expr)) +
-    ggplot2::geom_point() +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(x = 'Chromosome', y = names(assay), title = cell) +
-    ggplot2::scale_x_continuous(breaks = chr_pos$pos, labels = chr_pos$chrom)
-
-  if(return){
-    return(p)
-  } else {
-    plot(p)
-  }
-}
-
 #' Title
 #'
 #' @param sbird_sce
@@ -218,8 +168,8 @@ plot_cell <- function(sce, cell_id, assay, return = F){
 #' @export
 #'
 #' @examples
-plot_cell <- function(sbird_sce, cell, chr = NULL, return_plot = FALSE){
-  copy_mtx <- SummarizedExperiment::assay(sbird_sce, 'copy')
+plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot = FALSE){
+  copy_mtx <- SummarizedExperiment::assay(sbird_sce, assay)
   reads_mtx <- SummarizedExperiment::assay(sbird_sce, 'reads')
 
   dat <- data.frame(copy = copy_mtx[,colnames(copy_mtx)==cell,drop=T],
@@ -232,10 +182,8 @@ plot_cell <- function(sbird_sce, cell, chr = NULL, return_plot = FALSE){
   ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
 
   # Scale the reads to fit on the plot grid
-  dat$deviation <- dat$copy/dat$reads
-  deviations <- dat$deviation
-  deviations <- deviations[is.finite(deviations)]
-  dat$adj_reads <- dat$reads*mean(deviations)
+  deviation <- mean(dat$copy, na.rm = TRUE) / mean(dat$reads, na.rm = TRUE)
+  dat$adj_reads <- dat$reads*deviation
 
   colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
               '#d6804f', '#b3402e', '#821010', '#6a0936',
@@ -245,27 +193,20 @@ plot_cell <- function(sbird_sce, cell, chr = NULL, return_plot = FALSE){
   # Get the plotting position for the chromsomes
   dat$chr <- gsub('^([0-9]+|X|Y)_.*', '\\1', dat$bin_name)
   chr_labels <- unique(dat$chr)
-  chr_locs <- sapply(chrs, function(x) mean(which(dat$chr == x)))
-  border_locs <- sapply(chrs, function(x) max(which(dat$chr == x)))
+  chr_locs <- sapply(chr_labels, function(x) mean(which(dat$chr == x)))
+  border_locs <- sapply(chr_labels, function(x) max(which(dat$chr == x)))
   border_locs <- border_locs[1:(length(border_locs)-1)]
   all_locs <- c(chr_locs, border_locs)
   all_labels <- c(chr_labels, rep('', length(border_locs)))
   all_tics <- c(rep(NA, length(chr_locs)), rep('black', length(border_locs)))
 
   if(!is.null(chr)){dat <- dat[dat$chr==chr,]}
-  p <- ggplot2::ggplot(dat, aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
-    ggplot2::geom_point(aes(y = copy)) +
+  p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
+    ggplot2::geom_point(ggplot2::aes(y = copy)) +
     ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors) +
     ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
-    ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + theme_classic() +
-    ggplot2::theme(axis.ticks.x = element_line(color = all_tics))
-  #ggplot2::scale_x_continuous(name = 'Chromosome', breaks = chr_locs, labels = chrs) + theme_classic() +
-  #ggplot2::theme(axis.ticks.x = element_line(color = c(rep(NA, length(border_ticks)))))
-
-
-  #scale_x_continuous(breaks = c(sort(unique(data$x)), x_tick),
-  #                   labels = c(sort(unique(data$name)), rep(c(""), len))) +
-  #  theme(axis.ticks.x = element_line(color = c(rep(NA, len - 1), rep("black", len))))
+    ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + ggplot2::theme_classic() +
+    ggplot2::theme(axis.ticks.x = ggplot2::element_line(color = all_tics))
 
   if(return_plot){return(p)}
   else{plot(p)}

@@ -28,7 +28,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    out <- Songbird::estimate.ploidy(sample = bedpe, genome = genome, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, use_external = ext_correction)
+    out <- estimate.ploidy(sample = bedpe, genome = genome, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, use_external = ext_correction)
     reads.cor$ratio <- out$ratio
     reads.cor$est_ploidy <- out$est_ploidy
     reads.cor$breadth <- out$breadth
@@ -160,36 +160,108 @@ calc_madOffset <- function(values){
 #' @export
 #'
 #' @examples
-ubh_segment <- function(reads, use, min_svSize){
-  reads[is.na(reads)] <- 0
+# ubh_segment <- function(reads, use, min_svSize){
+#   reads[is.na(reads)] <- 0
+#
+#   # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
+#   tail_length <- round(length(reads)*0.1)
+#   reads_wTail <- c(reads, rep(0, tail_length))
+#
+#   mean <- mean(reads_wTail)
+#   sd <- sd(reads_wTail)
+#   reads_wTail <- (reads_wTail-mean)/sd
+#   noise_comp <- wh_transform(reads_wTail, sv_binSize = min_svSize)
+#
+#   #UBH_obj <- unbalhaar::best.unbal.haar.bu(reads_wTail)
+#   UBH_obj <- unbalhaar::best.unbal.haar(reads_wTail)
+#   est.sigma <- calc_madOffset(reads_wTail)
+#
+#   score_fun <- function(x, UBH_transform, reads, noise_comp, est.sigma){
+#     #UBH_transform <- unbalhaar::hard.thresh.bu(UBH_transform, x*est.sigma)
+#     #reconstr <- unbalhaar::reconstr.bu(UBH_transform)
+#     UBH_transform <- unbalhaar::hard.thresh(UBH_transform, x*est.sigma)
+#     reconstr <- unbalhaar::reconstr(UBH_transform)
+#     norm_reads <- reads - reconstr
+#     return(transport::wasserstein1d(norm_reads, noise_comp))
+#   }
+#
+#   sigma_multiplier <- stats::optimize(score_fun, c(0.5, 4), UBH_obj, reads_wTail, noise_comp, est.sigma, tol = 1e-3)
+#
+#   #optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
+#   optim_UBH <- unbalhaar::hard.thresh(UBH_obj, sigma = est.sigma)
+#   optim_UBH <- prune_offsets(optim_UBH, reads_wTail, min_svSize)
+#   reconstr <- unbalhaar::reconstr(optim_UBH)*sd + mean
+#   reconstr <- reconstr[1:length(reads)]
+#   return(reconstr)
+# }
 
-  # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
-  tail_length <- round(length(reads)*0.1)
-  reads_wTail <- c(reads, rep(0, tail_length))
+ubh_segment <- function(values, use, min_svSize){
 
-  mean <- mean(reads_wTail)
-  sd <- sd(reads_wTail)
-  reads_wTail <- (reads_wTail-mean)/sd
-  noise_comp <- wh_transform(reads_wTail, sv_binSize = min_svSize)
+  # Strip NAs and save their position
+  out <- rep(NA, length(values))
+  real_idxs <- which(!is.na(values))
+  values <- values[!is.na(values)]
+  sigma <- calc_madOffset(values)
 
-  UBH_obj <- unbalhaar::best.unbal.haar.bu(reads_wTail)
-  est.sigma <- calc_madOffset(reads_wTail)
-
-  score_fun <- function(x, UBH_transform, reads, noise_comp, est.sigma){
-    UBH_transform <- unbalhaar::hard.thresh.bu(UBH_transform, x*est.sigma)
-    reconstr <- unbalhaar::reconstr.bu(UBH_transform)
-    norm_reads <- reads - reconstr
-    return(transport::wasserstein1d(norm_reads, noise_comp))
-  }
-
-  sigma_multiplier <- stats::optimize(score_fun, c(0.5, 4), UBH_obj, reads_wTail, noise_comp, est.sigma, tol = 1e-3)
-
-  optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
-  reconstr <- unbalhaar::reconstr.bu(optim_UBH)*sd + mean
-  reconstr <- reconstr[1:length(reads)]
-  return(reconstr)
+  # Run UBH
+  transform <- unbalhaar::best.unbal.haar(values)
+  transform.filt <- unbalhaar::hard.thresh(transform, sigma)
+  #transform.filt <- prune_offsets(transform.filt, values, min_svSize)
+  reconstruct <- unbalhaar::reconstr(transform.filt)
+  out[real_idxs] <- reconstruct
+  return(out)
 }
 
+#' prune_offsets
+#'
+#' @param ubh_obj path to the bedpe file produced by the preprocessing pipeline
+#' @param reads bin data from the QDNASeq object
+#' @param min_svSize minimum read length (default 30 nt)
+#'
+#' @return a data frame set up as a traditional bed file
+#'
+#' @examples
+
+prune_offsets <- function(ubh_obj, reads, min_svSize){
+  tree <- ubh_obj$tree
+  split_data <- c()
+  for (i in 1:length(tree)) {
+    entry <- tree[[i]]
+    s <- entry[5,] - entry[3,]
+    left_bias <- (entry[4,] - entry[3,])/s
+    right_bias <- (entry[5,] - entry[4,])/s
+    max_bias <- apply(cbind(left_bias, right_bias), 1, max)
+
+    dat <- data.frame(split_bias = max_bias, span = s,
+                      tree_level = i, column = seq_along(max_bias),
+                      coeff = entry[2,])
+    split_data <- rbind(split_data, dat)
+  }
+
+  split_data$threshold <- (split_data$span-0.05*split_data$span)/split_data$span
+  split_data$offset_entry <- (split_data$split_bias >= split_data$threshold) & (split_data$span > min_svSize)
+
+  offset_data <- split_data[split_data$offset_entry, ]
+  offset_data$ubh_vector_peak <- NA
+  for(i in 1:nrow(offset_data)){
+    start <- 1
+    split <- (1-offset_data$split_bias[i]) * offset_data$span[i] + 1
+    end <- offset_data$span[i]
+    offset_data$ubh_vector_peak[i] <- max(unbalhaar::unbal.haar.vector(c(start, split, end)))
+  }
+
+  thresh <- sd(diff(reads))
+  offset_data$coeff[offset_data$coeff < -thresh] <- -thresh
+  offset_data$coeff[offset_data$coeff > thresh] <- thresh
+  offset_data$coeff <- 0
+
+  for(i in 1:nrow(offset_data)){
+    tree[[offset_data$tree_level[i]]][2, offset_data$column[i]] <- offset_data$coeff[i]
+  }
+
+  ubh_obj$tree <- tree
+  return(ubh_obj)
+}
 
 #' load.preprocess.bed
 #'
@@ -413,7 +485,8 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
                     ploidy_readCount = nrow(bed))
 
   if(genome == 'hg38'){
-    out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
+    #out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
+    out$corrected_ratio <- out$ratio
   }else{
     out$corrected_ratio <- out$ratio
   }

@@ -6,10 +6,12 @@
 #' @export
 #'
 #' @examples
-identify_subclones <- function(sbird_sce, assay = 'segmented', k = 40, method = inv_manhattan, min_size = 5, seed = 1234){
+identify_subclones <- function(sbird_sce, assay = 'segmented', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5){
   set.seed(seed)
   # Cluster the cells using the changepoint matrix and sce
-  change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay), use_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use)
+  change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay),
+                                            bin_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use,
+                                            cell_mask = sbird_sce$total_reads > min_readCount)
   SingleCellExperiment::reducedDim(sbird_sce, paste0(assay, '_changepoint')) <- change_mtx
 
   # Make graph
@@ -72,16 +74,17 @@ gauss_kernel <- function(matrix, n_neighbors){
 #' @export
 #'
 #' @examples
-generate_changepoint_matrix <- function(matrix, use_mask){
+generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
   # Find the change points in the mixed matrix
-  matrix <- t(matrix)[,use_mask]
+  matrix <- t(matrix)[,bin_mask]
   change_mtx <- t(apply(matrix, 1, diff))
 
   # Smooth the change matrix by applying a gaussian kernel
   kernel_mtx <- round(gauss_kernel(change_mtx, 5), 2)
 
   # Select change points observed in more than 10% of cells
-  bins_to_use <- which(colSums(abs(kernel_mtx)>0.1)>(nrow(kernel_mtx)*0.1))
+  highq_mtx <- kernel_mtx[cell_mask,]
+  bins_to_use <- which(colSums(abs(highq_mtx)>0.1)>(nrow(highq_mtx)*0.1))
   kernel_mtx <- kernel_mtx[,bins_to_use]
   return(kernel_mtx)
 }

@@ -35,6 +35,32 @@ reads_to_matrix <- function(data, column, return_counts = FALSE) {
 
 #' Title
 #'
+#' @param expected_ploidy noisy estimator of true cell ploidy
+#'
+#' @return
+#' @export
+#'
+#' @examples
+sanitize_ploidy <- function(expected_ploidy){
+  # If using the overlap calling pipeline
+  if(!is.na(expected_ploidy)){
+    if(expected_ploidy < 0.5){
+      expected_ploidy <- 2
+    }else if(expected_ploidy > 15){
+      expected_ploidy <- 15
+    }
+    # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
+    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
+    modeState <- modeState[modeState>0]
+
+  }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
+    modeState <- seq(2, 8)
+  }
+  return(modeState)
+}
+
+#' Title
+#'
 #' @param means output from the unbalanced haar transform
 #' @param use boolean array marking high quality bins
 #' @param expected_ploidy noisy estimator of true cell ploidy
@@ -45,34 +71,18 @@ reads_to_matrix <- function(data, column, return_counts = FALSE) {
 #'
 #' @examples
 fitMeans <- function(means, use, sigma, expected_ploidy = NA){
-  # If using the overlap calling pipeline
-  if(!is.na(expected_ploidy)){
-    # Abnormal ploidy states are considered diploid
-    if(expected_ploidy < 0.5){
-      expected_ploidy <- 2
-    }else if(expected_ploidy > 15){
-      expected_ploidy <- 15
-    }
-    # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
-    modeState <- modeState[modeState>0]
-  }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
-    modeState <- seq(2, 8)
-  }
+
+  modeState <- sanitize_ploidy(expected_ploidy)
 
   final_cn <- rep(NA, length(means))
   all_means <- means
-  use_idx <- which(use)
-  means <- means[use]
+  use_idx <- which(use & !is.na(means))
+  means <- means[use_idx]
   nBins <- length(means)
 
   # Identify largest peak and propose CN state
   dens <- stats::density(means)
   peak <- abs(dens$x[which.max(dens$y)])
-
-  # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-  modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
-  modeState <- modeState[modeState>0]
 
   fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
   stateScores <- c() # How well does the inferred states fit our strong prior that cells should be diploid?
@@ -103,14 +113,16 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
       topScores[j] <- scores[states[j],j]
     }
     fitScores <- c(fitScores, sum(topScores))
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = states-1, sd = sigma, expected_ploidy, log = T)))
+    stateScores <- c(stateScores, sum(stats::dnorm(mean = states-1, sd = 1, expected_ploidy, log = T)))
     fitStates[i,] <- states - 1
   }
 
   # Get the highest scoring fit and apply it to the good bins
   stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
   fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
-  bestFit <- which.max(stateScores + fitScores)
+
+  # If there is no prior expected ploidy, place no weight on the state scores
+  bestFit <- which.max(sum(stateScores, fitScores, na.rm = T))
   final_cn[use_idx] <- fitStates[bestFit,]
 
   # get true uniploid & apply to the remaining bins
@@ -142,7 +154,7 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000){
     high_qPloidies <- est_ploidies[est_ploidies > 0 & est_ploidies < 10 & is.finite(est_ploidies) & readCounts > min_reads]
     if(length(high_qPloidies) > 10){
       sbird_sce$corr.ploidy[clone] <- mean(high_qPloidies, na.rm = T)
-      sbird_sce$corr.ploidy[clone] <- detect_wgd(high_qPloidies, est_ploidies)
+      #sbird_sce$wgd[clone] <- detect_wgd(high_qPloidies, est_ploidies)
     }else{
       warning(paste0("Not enough high quality cells to estimate ploidy for subclone: ", subclone, '\nDefaulting to a range from 2-8'))
       sbird_sce$corr.ploidy[clone] <- NA
@@ -184,19 +196,29 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @export
 #'
 #' @examples
-copyCall <- function(sbird_sce){
+copyCall <- function(sbird_sce, num_cores = NULL){
+  if(is.null(num_cores)){
+    num_cores <- parallel::detectCores() - 1
+  }
   # Fit means to produce the final copy matrix
   cn_matrix <- c()
   segmented_matrix <- SummarizedExperiment::assay(sbird_sce, 'segmented')
   reads_matrix <- SummarizedExperiment::assay(sbird_sce, 'reads')
 
-  sigmas <- c()
-  for(i in 1:ncol(segmented_matrix)){
-    use <- SummarizedExperiment::rowData(sbird_sce)$overlap_use
-    sigma <- sd((segmented_matrix[,i]-reads_matrix[,i])[use], na.rm = T)
-    cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], use, sigma, sbird_sce$corr.ploidy[i]))
-    sigmas <- c(sigmas, sigma)
-  }
+  use <- SummarizedExperiment::rowData(sbird_sce)$overlap_use
+  var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
+  sigmas <- apply(var_matrix, 2, function(x) sd(x, na.rm = T))
+  cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
+    fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])
+  }, mc.cores = num_cores)
+
+  cn_matrix <- do.call(cbind, cn_matrix)
+  #for(i in 1:ncol(segmented_matrix)){
+  #
+  #  sigma <- sd((segmented_matrix[,i]-reads_matrix[,i])[use], na.rm = T)
+  #  cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], use, sigma, sbird_sce$corr.ploidy[i]))
+  #  sigmas <- c(sigmas, sigma)
+  #}
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
   sbird_sce$bin_noise <- sigmas
   return(sbird_sce)
@@ -225,6 +247,7 @@ create_sce <- function(res){
 
   # Global Cell Quantified Information
   sbird_sce$total_reads <- sapply(res, function(x) sum(x$uncorrected.reads))
+  sbird_sce$state_variance <- sapply(res, function(x) sqrt(sum((x$reads - x$ubh_tx)^2, na.rm = T)/nrow(x)))
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- sapply(res, function(x) mean(x$est_ploidy))
@@ -252,17 +275,22 @@ create_sce <- function(res){
 #' @export
 #'
 #' @examples
-create_sce_from_res <- function(res){
+create_sce_from_res <- function(res, n_cpu=NULL){
+  if(is.null(n_cpu)){
+    n_cpu <- parallel::detectCores() - 1
+  }
+
   reads <- reads_to_matrix(res, 'reads')
-  counts <- reads_to_matrix(res, 'reads')
-  segmented <- apply(reads, 1, function(x) Songbird::ubh_segment(reads = x, use = TRUE, min_svSize = 2))
+  counts <- reads_to_matrix(res, 'uncorrected.reads')
+  segmented <- pbmcapply::pbmclapply(res, function(x) Songbird::ubh_segment(x$reads, use = TRUE, min_svSize = 4), mc.cores = n_cpu)
+  segmented <- do.call(rbind, segmented)
 
   sbird_sce <- SingleCellExperiment::SingleCellExperiment(assays = list(counts = t(counts), reads = t(reads), segmented = t(segmented)))
 
   # Per cell file information
   sbird_sce$bam_file <- NA
   sbird_sce$bedpe_file <- NA
-  sbird_sce$cell_id <- cell_ids
+  sbird_sce$cell_id <- sapply(res, function(x) unique(x$cell_id))
   sbird_sce$total_reads <- apply(counts, 1, function(x) sum(x, na.rm = T))
 
   # Cell information derived from just the high quality regions
