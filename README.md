@@ -9,23 +9,22 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Reads per CN
   - [ ] UMAP and PCA plotter
 - [x] minimize dependencies? (Rphenograph is github install only...)
-- [x] Run on both hg38 and T2T
-- [x] Expand Bin Exclusion list with T2T?
 - [ ] Allow to skip WGD & Subclone ID
-- [x] Allow to skip any ploidy estimation (Default mean ploidy range 2-8)
 - [ ] Build out Vignette and Documentation
 - [x] Allow recalibration of correction factor for ploidy estimation
 - [x] Add Parallel processing
 - [ ] Parameter checks for all user facing functions
-- [x] Handle empty bams and bedpes gracefully
-- [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
+- [ ] Convert bed handling to data.table
+- [ ] Convert all multicore to pbmcapply
+- [ ] Write Sonbird creation functions from matrix
+- [ ] Wrap bedpe/bam loading into a function 
 
 # To Done (almost) list!
-- [-] CN Caller
+- [x] CN Caller
   - [x] read in bam file using qDNASeq
   - [x] Calculate GC+Map Correction
   - [x] Calculate per cell ploidy estimation
-    - [x Figure out correction factor (try HG38 scAbsolute)
+  - [x] Figure out correction factor (try HG38 scAbsolute)
   - [x] Instantiate scExperiment Class and populate with metadata
   - [x] Make UBH Matrix and add to scExperiment Class
   - [x] Cluster cells using breakpoint matrix + Phenograph
@@ -33,6 +32,11 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Produce Final Quality Score
   - [x] Make Copy Matrix
   - [x] Minimal Vignette
+  - [x] Run on both hg38 and T2T
+  - [x] Expand Bin Exclusion list with T2T?
+  - [x] Allow to skip any ploidy estimation (Default mean ploidy range 2-8)
+  - [x] Handle empty bams and bedpes gracefully
+  - [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
 
 # Minimal Vignette
 ```R
