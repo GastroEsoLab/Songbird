@@ -41,34 +41,34 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
 }
 
 
-#' Title
+#' #' Title
+#' #'
+#' #' @param ploidy estimated ploidy
+#' #' @param prop_doublets proportion of doublets
+#' #' @param coverage coverage of the cell
+#' #'
+#' #' @return
+#' #' @export
+#' #'
+#' #' @examples
+#' correct_ratio <- function(ratio, prop_doublets, use_external = NULL){
+#'   # Right now its just a place holder function
+#'   if(is.null(use_external)){
+#'     corr_data <- Songbird::correction_data
+#'   }
+#'   else{
+#'     corr_data <- read.table(use_external, header = T, sep = '\t')
+#'   }
 #'
-#' @param ploidy estimated ploidy
-#' @param prop_doublets proportion of doublets
-#' @param coverage coverage of the cell
+#'   # Process the correction table with a known ploidy
+#'   corr_data$true_ratio <- (corr_data$ploidy-1)/corr_data$ploidy
+#'   corr_data$correction <- corr_data$est_ratio/corr_data$true_ratio
+#'   cor_function <- stats::lm(correction ~ doublet_prop, data = corr_data)
 #'
-#' @return
-#' @export
-#'
-#' @examples
-correct_ratio <- function(ratio, prop_doublets, use_external = NULL){
-  # Right now its just a place holder function
-  if(is.null(use_external)){
-    corr_data <- Songbird::correction_data
-  }
-  else{
-    corr_data <- read.table(use_external, header = T, sep = '\t')
-  }
-
-  # Process the correction table with a known ploidy
-  corr_data$true_ratio <- (corr_data$ploidy-1)/corr_data$ploidy
-  corr_data$correction <- corr_data$est_ratio/corr_data$true_ratio
-  cor_function <- stats::lm(correction ~ doublet_prop, data = corr_data)
-
-  # Predict the correction factors for each ratio using the linear function
-  correction_factor <- stats::predict(cor_function, newdata = data.frame(doublet_prop = prop_doublets))
-  return(ratio/correction_factor)
-}
+#'   # Predict the correction factors for each ratio using the linear function
+#'   correction_factor <- stats::predict(cor_function, newdata = data.frame(doublet_prop = prop_doublets))
+#'   return(ratio/correction_factor)
+#' }
 
 #' convert_long
 #'
@@ -126,75 +126,6 @@ load_cell <- function(bamPath, binSize, genome){
 #' @return
 #'
 #' @examples
-wh_transform <- function(vals, sv_binSize = 25){
-  sv_freq <- floor(length(vals)/sv_binSize)
-  transformation <- gsignal::fwht(vals)
-  mask <- rep(1, length(transformation))
-  mask[sv_freq:length(transformation)] <- 0
-
-  reconstr <- gsignal::ifwht(transformation*mask)
-  reconstr <- reconstr[1:length(vals)]
-  return(reconstr)
-}
-
-#' calc_madOffset
-#'
-#' @param values calculate MAD for ubhaar estimation
-#'
-#' @return
-#'
-#' @examples
-calc_madOffset <- function(values){
-  median_value <- stats::median(values, na.rm = TRUE)
-  total_deviation <- abs(values - median_value)
-  return(stats::median(total_deviation, na.rm = T))
-}
-
-#' ubh_segment
-#'
-#' @param reads gc and map corrected reads from the qDNASeq object
-#' @param use boolean array marking high quality bins
-#' @param min_svSize minimum confident structural variant size (in bins)
-#'
-#' @return
-#' @export
-#'
-#' @examples
-# ubh_segment <- function(reads, use, min_svSize){
-#   reads[is.na(reads)] <- 0
-#
-#   # Add 0.1x bins of 0s to try to keep ubh segmentation in perspective
-#   tail_length <- round(length(reads)*0.1)
-#   reads_wTail <- c(reads, rep(0, tail_length))
-#
-#   mean <- mean(reads_wTail)
-#   sd <- sd(reads_wTail)
-#   reads_wTail <- (reads_wTail-mean)/sd
-#   noise_comp <- wh_transform(reads_wTail, sv_binSize = min_svSize)
-#
-#   #UBH_obj <- unbalhaar::best.unbal.haar.bu(reads_wTail)
-#   UBH_obj <- unbalhaar::best.unbal.haar(reads_wTail)
-#   est.sigma <- calc_madOffset(reads_wTail)
-#
-#   score_fun <- function(x, UBH_transform, reads, noise_comp, est.sigma){
-#     #UBH_transform <- unbalhaar::hard.thresh.bu(UBH_transform, x*est.sigma)
-#     #reconstr <- unbalhaar::reconstr.bu(UBH_transform)
-#     UBH_transform <- unbalhaar::hard.thresh(UBH_transform, x*est.sigma)
-#     reconstr <- unbalhaar::reconstr(UBH_transform)
-#     norm_reads <- reads - reconstr
-#     return(transport::wasserstein1d(norm_reads, noise_comp))
-#   }
-#
-#   sigma_multiplier <- stats::optimize(score_fun, c(0.5, 4), UBH_obj, reads_wTail, noise_comp, est.sigma, tol = 1e-3)
-#
-#   #optim_UBH <- unbalhaar::hard.thresh.bu(UBH_obj, sigma = est.sigma)
-#   optim_UBH <- unbalhaar::hard.thresh(UBH_obj, sigma = est.sigma)
-#   optim_UBH <- prune_offsets(optim_UBH, reads_wTail, min_svSize)
-#   reconstr <- unbalhaar::reconstr(optim_UBH)*sd + mean
-#   reconstr <- reconstr[1:length(reads)]
-#   return(reconstr)
-# }
-
 ubh_segment <- function(values, use, min_svSize){
 
   # Strip NAs and save their position
@@ -464,7 +395,7 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
                                            "Norm.Count.Upstream",
                                            "Count.Over",
                                            "Norm.Count.Over")],
-                             by = list(bed$binName), function(x) mean(x, na.rm = T))
+                             by = list(bed$binName), function(x) sum(x, na.rm = T))
   bed_counts <- stats::aggregate(bed$binName, by = list(bed$binName), length)
   bed_coverage <- stats::aggregate(bed$Length, by = list(bed$binName), function(x) sum(x, na.rm = T))
 
@@ -484,12 +415,13 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
                     overlap_genome_size = nrow(bin_data)*binSize,
                     ploidy_readCount = nrow(bed))
 
-  if(genome == 'hg38'){
-    #out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
-    out$corrected_ratio <- out$ratio
-  }else{
-    out$corrected_ratio <- out$ratio
-  }
-  out$est_ploidy <- 1/(1-out$corrected_ratio)
+  #if(genome == 'hg38'){
+  #  #out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
+  #  out$corrected_ratio <- out$ratio
+  #}else{
+  #  out$corrected_ratio <- out$ratio
+  #}
+  #out$est_ploidy <- 1/(1-out$corrected_ratio)
+  out$est_ploidy <- 1/(1-out$ratio)
   return(out)
 }
