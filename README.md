@@ -14,10 +14,9 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [x] Allow recalibration of correction factor for ploidy estimation
 - [x] Add Parallel processing
 - [ ] Parameter checks for all user facing functions
-- [ ] Convert bed handling to data.table
 - [ ] Convert all multicore to pbmcapply
 - [ ] Write Sonbird creation functions from matrix
-- [ ] Wrap bedpe/bam loading into a function 
+- [x] Wrap bedpe/bam loading into a function 
 
 # To Done (almost) list!
 - [x] CN Caller
@@ -37,7 +36,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Allow to skip any ploidy estimation (Default mean ploidy range 2-8)
   - [x] Handle empty bams and bedpes gracefully
   - [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
-
+  - [x] Convert bed handling to data.table (read_table single core is the same speed)
 # Minimal Vignette
 ```R
 library(Songbird)
