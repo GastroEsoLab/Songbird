@@ -10,6 +10,8 @@ load_cell(bamPath, binSize, genome)
 \item{bamPath}{path to the bam file}
 
 \item{binSize}{size of the bins in # of nucleotides}
+
+\item{genome}{genome to use for binning}
 }
 \description{
 load_cell

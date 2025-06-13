@@ -75,7 +75,8 @@ gauss_kernel <- function(matrix, n_neighbors){
 #' generate_changepoint_matrix
 #'
 #' @param matrix the inputted matrix to identify changepoints from
-#' @param use_mask bins to use
+#' @param bin_mask bins to use
+#' @param cell_mask cells to use
 #'
 #' @return a matrix of changepoints
 generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
@@ -95,8 +96,8 @@ generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
 
 #' inv_manhattan
 #'
-#' @param matrix the inputted matrix to identify changepoints from
-#' @param use_mask bins to use
+#' @param x a vector of changepoints
+#' @param y a vector of changepoints
 #'
 #' @return a matrix of changepoints
 #' @export
@@ -113,7 +114,7 @@ inv_manhattan <- function(x, y){
 convert_mtxlong <- function(mtx){
   mtx <- data.frame(mtx)
   mtx$from <- mtx[,1]
-  mtx_long <- tidyr::pivot_longer(mtx, cols = -from, names_to = 'col', values_to = 'value')
+  mtx_long <- tidyr::pivot_longer(mtx, cols = -mtx$from, names_to = 'col', values_to = 'value')
   return(mtx_long)
 }
 

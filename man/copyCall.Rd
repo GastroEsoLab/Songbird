@@ -8,6 +8,10 @@ copyCall(sbird_sce, num_cores = NULL, tune_uniploid = FALSE)
 }
 \arguments{
 \item{sbird_sce}{the songbird single cell experiment object - requires that 'segmented' and 'reads' assays are present}
+
+\item{num_cores}{number of cores to use for parallel processing, default is all but one core}
+
+\item{tune_uniploid}{whether to tune the uniploid value for each bin, default is FALSE}
 }
 \value{
 songbird object with the copy number called for each bin

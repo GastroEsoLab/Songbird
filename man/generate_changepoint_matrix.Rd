@@ -9,7 +9,9 @@ generate_changepoint_matrix(matrix, bin_mask, cell_mask)
 \arguments{
 \item{matrix}{the inputted matrix to identify changepoints from}
 
-\item{use_mask}{bins to use}
+\item{bin_mask}{bins to use}
+
+\item{cell_mask}{cells to use}
 }
 \value{
 a matrix of changepoints

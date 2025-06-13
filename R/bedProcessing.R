@@ -1,25 +1,28 @@
 #' process.batch
 #'
 #' @param bams path to a bam file
+#' @param genome genome assembly to use (e.g. hg38, hg19)
 #' @param bedpes path to the accompanying bedfile
-#' @param genome estimated ploidy of the cell (from estimate.ploidy)
 #' @param bin.size number of nucleotides per bin
-#' @param min.length number of bins for the smallest confident structural variant
+#' @param min_length minimum length for reads
+#' @param max_length maximum length for reads
+#' @param tag_overlap size of the read overlap created by a tagmentation event
+#' @param n_cpu number of CPUs to use for parallel processing, default is NULL which uses all but one CPU
 #'
 #' @return songbird object
 #' @export
 #'
 #' @examples
 
-process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9, ext_correction = NULL, n_cpu=NULL){
+process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = 1000, tag_overlap = 9, n_cpu=NULL){
   if(is.null(n_cpu)){
     n_cpu <- parallel::detectCores() - 1
   }
 
   if(is.null(bedpes)){
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min.svSize = min.svSize, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, ext_correction = ext_correction), mc.cores = 24)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = 24)
   }else{
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min.svSize = min.svSize, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, ext_correction = ext_correction), mc.cores = 24)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = 24)
   }
   return(create_sce(res))
 }
@@ -27,13 +30,15 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #' process.cell
 #'
 #' @param bam path to a bam file
+#' @param genome genome assembly to use (e.g. hg38, hg19)
 #' @param bedpe path to the accompanying bedfile
-#' @param est.ploidy estimated ploidy of the cell (from estimate.ploidy)
 #' @param bin.size number of nucleotides per bin
-#' @param min.svSize number of bins for the smallest confident structural variant
+#' @param min_length minimum length for reads
+#' @param max_length maximum length for reads
+#' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9){
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = 1000, tag_overlap = 9){
   min.svSize <- min.svSize/bin.size
 
   reads <- load_cell(bam, binSize = bin.size, genome)
@@ -94,6 +99,7 @@ convert_long <- function(reads){
 #'
 #' @param bamPath path to the bam file
 #' @param binSize size of the bins in # of nucleotides
+#' @param genome genome to use for binning
 #'
 #' @return
 #'
@@ -133,11 +139,15 @@ ubh_segment <- function(values, use){
   return(out)
 }
 
+#' calc_madOffset
+#'
+#' @param values vector of values to calculate the MAD offset
+#' @return MAD offset
 calc_madOffset <- function(values){
   values <- values[!is.na(values)]
-  offset <- tail(values, -1)
-  values <- head(values, -1)
-  return(mad(sqrt(2)*abs(offset - values)))
+  offset <- utils::tail(values, -1)
+  values <- utils::head(values, -1)
+  return(stats::mad(sqrt(2)*abs(offset - values)))
 }
 
 
@@ -176,7 +186,7 @@ prune_offsets <- function(ubh_obj, reads, min_svSize){
     offset_data$ubh_vector_peak[i] <- max(unbalhaar::unbal.haar.vector(c(start, split, end)))
   }
 
-  thresh <- sd(diff(reads))
+  thresh <- stats::sd(diff(reads))
   offset_data$coeff[offset_data$coeff < -thresh] <- -thresh
   offset_data$coeff[offset_data$coeff > thresh] <- thresh
   offset_data$coeff <- 0
@@ -395,13 +405,6 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
                     overlap_genome_size = nrow(bin_data)*binSize,
                     ploidy_readCount = nrow(bed))
 
-  #if(genome == 'hg38'){
-  #  #out$corrected_ratio <- correct_ratio(out$ratio, out$prop_doublet_tags, use_external = use_external)
-  #  out$corrected_ratio <- out$ratio
-  #}else{
-  #  out$corrected_ratio <- out$ratio
-  #}
-  #out$est_ploidy <- 1/(1-out$corrected_ratio)
   out$est_ploidy <- 1/(1-out$ratio)
   return(out)
 }

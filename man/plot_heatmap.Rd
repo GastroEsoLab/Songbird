@@ -41,6 +41,8 @@ plot_heatmap(
 \item{plot_title}{title for the heatmap}
 
 \item{legend_title}{title for the heatmap legend}
+
+\item{show_cellNames}{boolean indicating whether to show the cell names on the heatmap}
 }
 \value{
 a heatmap object if return = TRUE, otherwise plots the heatmap

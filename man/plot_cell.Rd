@@ -11,6 +11,8 @@ plot_cell(sbird_sce, cell, assay = "copy", chr = NULL, return_plot = FALSE)
 
 \item{cell}{cell name to plot}
 
+\item{assay}{assay to plot. Will be overlaid over reads}
+
 \item{chr}{chromosome to plot, if NULL all chromosomes will be plotted}
 
 \item{return_plot}{if TRUE, returns the plot object instead of plotting it}

@@ -10,20 +10,23 @@ License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
 Imports: 
+    circlize,
     ComplexHeatmap,
     GenomicRanges,
     ggplot2,
-    gsignal,
+    igraph,
     IRanges,
     matrixStats,
     parallel,
     pbmcapply,
     QDNAseq,
     QDNAseq.hg38,
+    RANN,
     scico,
     SingleCellExperiment,
     stats,
-    transport,
+    SummarizedExperiment,
+    tidyr,
     unbalhaar
 RoxygenNote: 7.2.3
 Depends: 

@@ -12,6 +12,7 @@
 #' @param row_title title for the row labels of the heatmap
 #' @param plot_title title for the heatmap
 #' @param legend_title title for the heatmap legend
+#' @param show_cellNames boolean indicating whether to show the cell names on the heatmap
 #'
 #' @return a heatmap object if return = TRUE, otherwise plots the heatmap
 #' @export
@@ -157,6 +158,7 @@ get_binMetadata <- function(sce){
 #'
 #' @param sbird_sce songbird object
 #' @param cell cell name to plot
+#' @param assay assay to plot. Will be overlaid over reads
 #' @param chr chromosome to plot, if NULL all chromosomes will be plotted
 #' @param return_plot if TRUE, returns the plot object instead of plotting it
 #'
@@ -172,7 +174,7 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
                     reads = reads_mtx[,colnames(reads_mtx)==cell,drop=T],
                     bin_number = seq(1, nrow(reads_mtx)),
                     bin_name = rownames(reads_mtx))
-  dat$outlier <- dat$copy > quantile(dat$copy, 0.95, na.rm = T)
+  dat$outlier <- dat$copy > stats::quantile(dat$copy, 0.95, na.rm = T)
   # Scale the reads to fit on the plot grid
   deviation <- mean(dat$copy, na.rm = TRUE) / mean(dat$reads, na.rm = TRUE)
   dat$adj_reads <- dat$reads*deviation
@@ -190,7 +192,7 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
     p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
       ggplot2::geom_point(ggplot2::aes(y = copy))
   }else{
-    ymax <- quantile(dat$copy, 0.99, na.rm = T)
+    ymax <- stats::quantile(dat$copy, 0.99, na.rm = T)
     p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
       ggplot2::geom_point(ggplot2::aes(y = copy))
   }

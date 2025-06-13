@@ -8,6 +8,8 @@ create_sce_from_res(res, n_cpu = NULL)
 }
 \arguments{
 \item{res}{a list of results similar to the cell processing results}
+
+\item{n_cpu}{number of cores to use for parallel processing, default is all but one core}
 }
 \value{
 songbird object with the reads, counts, and segmented data

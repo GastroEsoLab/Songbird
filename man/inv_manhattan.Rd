@@ -7,9 +7,9 @@
 inv_manhattan(x, y)
 }
 \arguments{
-\item{matrix}{the inputted matrix to identify changepoints from}
+\item{x}{a vector of changepoints}
 
-\item{use_mask}{bins to use}
+\item{y}{a vector of changepoints}
 }
 \value{
 a matrix of changepoints

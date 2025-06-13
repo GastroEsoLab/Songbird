@@ -9,7 +9,6 @@ process.cell(
   genome,
   bedpe = NULL,
   bin.size = 5e+05,
-  min.svSize = 1e+06,
   min_length = 50,
   max_length = 1000,
   tag_overlap = 9
@@ -18,13 +17,17 @@ process.cell(
 \arguments{
 \item{bam}{path to a bam file}
 
+\item{genome}{genome assembly to use (e.g. hg38, hg19)}
+
 \item{bedpe}{path to the accompanying bedfile}
 
 \item{bin.size}{number of nucleotides per bin}
 
-\item{min.svSize}{number of bins for the smallest confident structural variant}
+\item{min_length}{minimum length for reads}
 
-\item{est.ploidy}{estimated ploidy of the cell (from estimate.ploidy)}
+\item{max_length}{maximum length for reads}
+
+\item{tag_overlap}{size of the read overlap created by a tagmentation event}
 }
 \value{
 corrected reads

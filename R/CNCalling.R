@@ -131,7 +131,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
     if(tune_uniploid){
       lb <- (uniploid * modeState[i])/(modeState[i] + 0.5)
       ub <- (uniploid * modeState[i])/(modeState[i] - 0.5)
-      best_uniploid <- optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
+      best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
                              return_cn = F, method = 'Brent', lower = lb, upper = ub)
       uniploid <- best_uniploid$par
     }
@@ -219,6 +219,8 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' copyCall
 #'
 #' @param sbird_sce the songbird single cell experiment object - requires that 'segmented' and 'reads' assays are present
+#' @param num_cores number of cores to use for parallel processing, default is all but one core
+#' @param tune_uniploid whether to tune the uniploid value for each bin, default is FALSE
 #'
 #' @return songbird object with the copy number called for each bin
 #' @export
@@ -235,7 +237,7 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
 
   use <- SummarizedExperiment::rowData(sbird_sce)$overlap_use
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
-  sigmas <- apply(var_matrix, 2, function(x) sd(x, na.rm = T))
+  sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
     fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
   }, mc.cores = num_cores)
@@ -292,6 +294,7 @@ create_sce <- function(res){
 #' create_sce_from_res
 #'
 #' @param res a list of results similar to the cell processing results
+#' @param n_cpu number of cores to use for parallel processing, default is all but one core
 #'
 #' @return songbird object with the reads, counts, and segmented data
 #'
