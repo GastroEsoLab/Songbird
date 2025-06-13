@@ -7,11 +7,14 @@
 count.doublets(bed, min.tag.overlap = 9, max.tag.overlap = 10)
 }
 \arguments{
-\item{bed}{a data frame formatted as a bed file with read positions must be filtered by remove.duplicates}
+\item{bed}{a data frame formatted as a bed file with read positions must be filtered by filter.bed}
 
 \item{min.tag.overlap}{smallest length of the tagmentation read overlap (default 9 nt)}
 
 \item{max.tag.overlap}{largest length of the tagmentation read overlap (default 10 nt)}
+}
+\value{
+the proportion of reads that are doublets, i.e. come from a set of 3 successful sequential tag events
 }
 \description{
 count.doublets

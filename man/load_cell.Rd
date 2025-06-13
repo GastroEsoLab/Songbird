@@ -4,7 +4,7 @@
 \alias{load_cell}
 \title{load_cell}
 \usage{
-load_cell(bamPath, binSize)
+load_cell(bamPath, binSize, genome)
 }
 \arguments{
 \item{bamPath}{path to the bam file}

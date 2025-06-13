@@ -1,3 +1,29 @@
+#' process.batch
+#'
+#' @param bams path to a bam file
+#' @param bedpes path to the accompanying bedfile
+#' @param genome estimated ploidy of the cell (from estimate.ploidy)
+#' @param bin.size number of nucleotides per bin
+#' @param min.length number of bins for the smallest confident structural variant
+#'
+#' @return songbird object
+#' @export
+#'
+#' @examples
+
+process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9, ext_correction = NULL, n_cpu=NULL){
+  if(is.null(n_cpu)){
+    n_cpu <- parallel::detectCores() - 1
+  }
+
+  if(is.null(bedpes)){
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min.svSize = min.svSize, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, ext_correction = ext_correction), mc.cores = 24)
+  }else{
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min.svSize = min.svSize, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, ext_correction = ext_correction), mc.cores = 24)
+  }
+  return(create_sce(res))
+}
+
 #' process.cell
 #'
 #' @param bam path to a bam file
@@ -6,11 +32,8 @@
 #' @param bin.size number of nucleotides per bin
 #' @param min.svSize number of bins for the smallest confident structural variant
 #'
-#' @return
-#' @export
-#'
-#' @examples
-process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9, ext_correction = NULL){
+#' @return corrected reads
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000, tag_overlap = 9){
   min.svSize <- min.svSize/bin.size
 
   reads <- load_cell(bam, binSize = bin.size, genome)
@@ -20,7 +43,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
   num_reads <- c(sum(reads.cor$uncorrected.reads))
 
   # Get mode CN indices
-  reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use, min_svSize = min.svSize)
+  reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
   reads.cor$num_reads <- num_reads
   reads.cor$bam_file <- bam
   reads.cor$bedpe_file <- bedpe
@@ -28,7 +51,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    out <- estimate.ploidy(sample = bedpe, genome = genome, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, use_external = ext_correction)
+    out <- estimate.ploidy(sample = bedpe, genome = genome, binSize = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap)
     reads.cor$ratio <- out$ratio
     reads.cor$est_ploidy <- out$est_ploidy
     reads.cor$breadth <- out$breadth
@@ -40,43 +63,11 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min.svSiz
   return(reads.cor)
 }
 
-
-#' #' Title
-#' #'
-#' #' @param ploidy estimated ploidy
-#' #' @param prop_doublets proportion of doublets
-#' #' @param coverage coverage of the cell
-#' #'
-#' #' @return
-#' #' @export
-#' #'
-#' #' @examples
-#' correct_ratio <- function(ratio, prop_doublets, use_external = NULL){
-#'   # Right now its just a place holder function
-#'   if(is.null(use_external)){
-#'     corr_data <- Songbird::correction_data
-#'   }
-#'   else{
-#'     corr_data <- read.table(use_external, header = T, sep = '\t')
-#'   }
-#'
-#'   # Process the correction table with a known ploidy
-#'   corr_data$true_ratio <- (corr_data$ploidy-1)/corr_data$ploidy
-#'   corr_data$correction <- corr_data$est_ratio/corr_data$true_ratio
-#'   cor_function <- stats::lm(correction ~ doublet_prop, data = corr_data)
-#'
-#'   # Predict the correction factors for each ratio using the linear function
-#'   correction_factor <- stats::predict(cor_function, newdata = data.frame(doublet_prop = prop_doublets))
-#'   return(ratio/correction_factor)
-#' }
-
 #' convert_long
 #'
 #' @param reads reads object from QDNASeq
 #'
 #' @return table of reads for each cell
-#'
-#' @examples
 convert_long <- function(reads){
   uncorReads <- reads$reads
   reads <- reads$reads.cor
@@ -118,30 +109,37 @@ load_cell <- function(bamPath, binSize, genome){
   return(list(reads = reads, reads.cor = reads.cor))
 }
 
-#' wh_transform
+#' ubh_segment
 #'
-#' @param vals values for the walsh haddamayer transform
-#' @param sv_binSize minimum confident structural variant size
+#' @param values GC + Map corrected reads per bin
+#' @param use bins to use
 #'
 #' @return
 #'
 #' @examples
-ubh_segment <- function(values, use, min_svSize){
+ubh_segment <- function(values, use){
 
   # Strip NAs and save their position
   out <- rep(NA, length(values))
   real_idxs <- which(!is.na(values))
   values <- values[!is.na(values)]
-  sigma <- calc_madOffset(values)
+  init_sigma <- calc_madOffset(values)
 
   # Run UBH
   transform <- unbalhaar::best.unbal.haar(values)
-  transform.filt <- unbalhaar::hard.thresh(transform, sigma)
-  #transform.filt <- prune_offsets(transform.filt, values, min_svSize)
-  reconstruct <- unbalhaar::reconstr(transform.filt)
-  out[real_idxs] <- reconstruct
+  transform.filt <- unbalhaar::hard.thresh(transform, init_sigma)
+  reconstr <- unbalhaar::reconstr(transform.filt)
+  out[real_idxs] <- reconstr
   return(out)
 }
+
+calc_madOffset <- function(values){
+  values <- values[!is.na(values)]
+  offset <- tail(values, -1)
+  values <- head(values, -1)
+  return(mad(sqrt(2)*abs(offset - values)))
+}
+
 
 #' prune_offsets
 #'
@@ -150,9 +148,6 @@ ubh_segment <- function(values, use, min_svSize){
 #' @param min_svSize minimum read length (default 30 nt)
 #'
 #' @return a data frame set up as a traditional bed file
-#'
-#' @examples
-
 prune_offsets <- function(ubh_obj, reads, min_svSize){
   tree <- ubh_obj$tree
   split_data <- c()
@@ -202,8 +197,6 @@ prune_offsets <- function(ubh_obj, reads, min_svSize){
 #' @param max_length maximum read length (default 1000 nt)
 #'
 #' @return a data frame set up as a traditional bed file
-#'
-#' @examples
 load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_length = 1000){
   bedpe <- utils::read.table(bedpe_file, sep = '\t')
   colnames(bedpe) <- c('Chr1', 'Start1', 'End1', 'Chr2', 'Start2', 'End2', 'Name', 'Score', 'R1_direction', 'R2_direction')
@@ -238,9 +231,6 @@ load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_lengt
 #' @param bin_data the metadata generated by QDNAseq for the bins
 #'
 #' @return a data frame with duplicate reads (identical start or end sites) removed
-#'
-#' @examples
-#'
 filter.bed <- function(bed, bin_data) {
   # Remove duplicated reads that aren't caught by the standard dedup tools
   bed <- bed[with(bed, order(Chr, Start, End, Strandedness)),]
@@ -265,8 +255,6 @@ filter.bed <- function(bed, bin_data) {
 #' @param n number of characters to count back to get strandedness
 #'
 #' @return read orientation from the last n characters of the read name
-#'
-#' @examples
 extractStrandedness <- function(readName, n){
   readName.count <- nchar(readName)
   return(substr(readName, readName.count - n + 1, readName.count))
@@ -278,9 +266,7 @@ extractStrandedness <- function(readName, n){
 #' @param min.tag.overlap smallest length of the tagmentation read overlap (default 9 nt)
 #' @param max.tag.overlap largest length of the tagmentation read overlap (default 10 nt)
 #'
-#' @return
-#'
-#' @examples
+#' @return the proportion of reads that are doublets, i.e. come from a set of 3 successful sequential tag events
 count.doublets <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
   read.starts <- GenomicRanges::GRanges(seqnames = bed$Chr,
                          ranges = IRanges::IRanges(start = bed$Start+min.tag.overlap, end = bed$Start+max.tag.overlap))
@@ -299,9 +285,6 @@ count.doublets <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
 #' @param tag.overlap largest length of the tagmentation read overlap (default 10 nt)
 #'
 #' @return the bed file with the number of reads overlapping the upstream and over regions for each read
-#' @export
-#'
-#' @examples
 count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10) {
   # bed <- tmp2
   upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size + tag.overlap,
@@ -336,8 +319,6 @@ count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10
 #' @param bed imported bed data frame from bedpe object
 #'
 #' @return the breadth of the bed file
-#'
-#' @examples
 calc.breadth <- function(bed){
   read_ranges <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                         ranges = IRanges::IRanges(start = bed$Start, end = bed$End))
@@ -350,18 +331,17 @@ calc.breadth <- function(bed){
   return(breadth)
 }
 
-#' Title
+#' estimate.ploidy
 #'
 #' @param sample path to bedpe file
 #' @param binSize binning size in nucleotides
+#' @param genome genome version to use for binning
 #' @param min_length minimum read length (default 50 nt)
 #' @param max_length maximum read length (default 1000 nt)
+#' @param tag_overlap number of nucleotides that the Tn5 overlaps (default 9 nt)
 #'
-#' @return
-#' @export
-#'
-#' @examples
-estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length = 1000, tag_overlap = 9, use_external = NULL){
+#' @return a data frame with observations derived from the bedpe file
+estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length = 1000, tag_overlap = 9){
   if(genome == 'hg19'){
     stop("hg19 is not supported. Please align your data to chm13v2 (best performance) or hg38 (good performance)")
   }

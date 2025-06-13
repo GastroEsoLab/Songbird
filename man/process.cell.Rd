@@ -6,11 +6,13 @@
 \usage{
 process.cell(
   bam,
+  genome,
   bedpe = NULL,
   bin.size = 5e+05,
   min.svSize = 1e+06,
   min_length = 50,
-  max_length = 1000
+  max_length = 1000,
+  tag_overlap = 9
 )
 }
 \arguments{
@@ -23,6 +25,9 @@ process.cell(
 \item{min.svSize}{number of bins for the smallest confident structural variant}
 
 \item{est.ploidy}{estimated ploidy of the cell (from estimate.ploidy)}
+}
+\value{
+corrected reads
 }
 \description{
 process.cell

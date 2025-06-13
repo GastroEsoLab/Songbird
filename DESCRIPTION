@@ -17,6 +17,7 @@ Imports:
     IRanges,
     matrixStats,
     parallel,
+    pbmcapply,
     QDNAseq,
     QDNAseq.hg38,
     scico,

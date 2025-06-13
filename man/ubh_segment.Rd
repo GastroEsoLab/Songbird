@@ -4,14 +4,12 @@
 \alias{ubh_segment}
 \title{ubh_segment}
 \usage{
-ubh_segment(reads, use, min_svSize)
+ubh_segment(values, use)
 }
 \arguments{
-\item{reads}{gc and map corrected reads from the qDNASeq object}
+\item{values}{GC + Map corrected reads per bin}
 
-\item{use}{boolean array marking high quality bins}
-
-\item{min_svSize}{minimum confident structural variant size (in bins)}
+\item{use}{bins to use}
 }
 \description{
 ubh_segment

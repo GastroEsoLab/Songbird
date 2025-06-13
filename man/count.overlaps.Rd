@@ -7,7 +7,7 @@
 count.overlaps(bed, min.size = 50, max.size = 1000, tag.overlap = 10)
 }
 \arguments{
-\item{bed}{a data frame formatted as a bed file with read positions must be filtered by remove.duplicates}
+\item{bed}{a data frame formatted as a bed file with read positions must be filtered by filter.bed}
 
 \item{min.size}{minimum read length (default 50 nt)}
 

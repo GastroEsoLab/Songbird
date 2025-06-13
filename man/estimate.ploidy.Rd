@@ -2,19 +2,33 @@
 % Please edit documentation in R/bedProcessing.R
 \name{estimate.ploidy}
 \alias{estimate.ploidy}
-\title{Title}
+\title{estimate.ploidy}
 \usage{
-estimate.ploidy(sample, binSize, min_length = 50, max_length = 1000)
+estimate.ploidy(
+  sample,
+  binSize,
+  genome,
+  min_length = 50,
+  max_length = 1000,
+  tag_overlap = 9
+)
 }
 \arguments{
 \item{sample}{path to bedpe file}
 
 \item{binSize}{binning size in nucleotides}
 
+\item{genome}{genome version to use for binning}
+
 \item{min_length}{minimum read length (default 50 nt)}
 
 \item{max_length}{maximum read length (default 1000 nt)}
+
+\item{tag_overlap}{number of nucleotides that the Tn5 overlaps (default 9 nt)}
+}
+\value{
+a data frame with observations derived from the bedpe file
 }
 \description{
-Title
+estimate.ploidy
 }

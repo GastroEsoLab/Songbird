@@ -1,12 +1,19 @@
-#' Title
+#' Identify Subclones using breakpoint identification and leiden clustering. Clusters with fewer than min_size cells are marked as noisy and put in cluster 0.
 #'
-#' @param sbird_sce
+#' @param sbird_sce songbird object
+#' @param assay the assay to use for clustering
+#' @param k number of nearest neighbors to use for clustering
+#' @param method the clustering method to use, default is inverse manhattan distance
+#' @param min_size minimum size of a subclone to be considered, default is 5 cells
+#' @param seed random seed for reproducibility
+#' @param min_readCount minimum read count for a cell to be considered, default is 1e5
+#' @param column_name the column name to store the subclone information in, default is 'subclone'
 #'
-#' @return
+#' @return A SingleCellExperiment object with clonal membership
 #' @export
 #'
 #' @examples
-identify_subclones <- function(sbird_sce, assay = 'segmented', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5){
+identify_subclones <- function(sbird_sce, assay = 'segmented', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5, column_name = 'subclone'){
   set.seed(seed)
   # Cluster the cells using the changepoint matrix and sce
   change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay),
@@ -26,20 +33,20 @@ identify_subclones <- function(sbird_sce, assay = 'segmented', k = 30, method = 
   subclone_counts <- sapply(subclones, function(x) sum(membership == x))
   membership[membership %in% subclones[subclone_counts < min_size]] <- 0
 
-  sbird_sce$subclone <- membership
+  # Add the subclone information to the SingleCellExperiment object
+  if(column_name %in% colnames(SummarizedExperiment::colData(sbird_sce))){
+    warning(paste0('Column ', column_name, ' already exists in the SingleCellExperiment object. Overwriting.'))
+  }
+  SummarizedExperiment::colData(sbird_sce)[[column_name]] <- membership
   return(sbird_sce)
 }
 
-# Apply a gaussian kernel to the change matrix
-#' Title
+#' gauss_kernel
 #'
 #' @param matrix the inputted matrix to smooth over
 #' @param n_neighbors number of adjacent bins to smooth with
 #'
-#' @return
-#' @export
-#'
-#' @examples
+#' @return a smoothed matrix
 gauss_kernel <- function(matrix, n_neighbors){
   # Check that n_neighbors is odd
   if(n_neighbors %% 2 == 0){
@@ -65,15 +72,12 @@ gauss_kernel <- function(matrix, n_neighbors){
   return(kernel_mtx)
 }
 
-#' Title
+#' generate_changepoint_matrix
 #'
 #' @param matrix the inputted matrix to identify changepoints from
 #' @param use_mask bins to use
 #'
-#' @return
-#' @export
-#'
-#' @examples
+#' @return a matrix of changepoints
 generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
   # Find the change points in the mixed matrix
   matrix <- t(matrix)[,bin_mask]
@@ -83,19 +87,29 @@ generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
   kernel_mtx <- round(gauss_kernel(change_mtx, 5), 2)
 
   # Select change points observed in more than 10% of cells
-  highq_mtx <- kernel_mtx[cell_mask,]
+  highq_mtx <- kernel_mtx[cell_mask,,drop=F]
   bins_to_use <- which(colSums(abs(highq_mtx)>0.1)>(nrow(highq_mtx)*0.1))
-  kernel_mtx <- kernel_mtx[,bins_to_use]
+  kernel_mtx <- kernel_mtx[,bins_to_use,drop=F]
   return(kernel_mtx)
 }
 
-# inverse manhattan
+#' inv_manhattan
+#'
+#' @param matrix the inputted matrix to identify changepoints from
+#' @param use_mask bins to use
+#'
+#' @return a matrix of changepoints
+#' @export
 inv_manhattan <- function(x, y){
   # x and y are vectors of the same length
   l1_dist <- sum(abs(x-y))
   return(1/(1+l1_dist))
 }
 
+#' convert_mtxlong
+#'
+#' @param mtx a matrix to convert to long format
+#' @return a long format data frame
 convert_mtxlong <- function(mtx){
   mtx <- data.frame(mtx)
   mtx$from <- mtx[,1]
@@ -103,6 +117,13 @@ convert_mtxlong <- function(mtx){
   return(mtx_long)
 }
 
+#' clustering
+#'
+#' @param knn_matrix a matrix of k-nearest neighbors
+#' @param feat_matrix a matrix of features for each cell
+#' @param method a function to calculate the affinity between cells
+#'
+#' @return a vector of cluster membership for each cell
 clustering <- function(knn_matrix, feat_matrix, method){
   affy_matrix <- matrix(0, nrow = nrow(knn_matrix), ncol = ncol(knn_matrix))
   for(i in 1:nrow(knn_matrix)){

@@ -1,13 +1,11 @@
-#' Title
+#' Reads_to_Matrix
+#' This function converts a long form data into a matrix
 #'
 #' @param data list of cell processing results
 #' @param column column to select from
 #' @param return_counts boolean to return total reads
 #'
-#' @return
-#' @export
-#'
-#' @examples
+#' @return a matrix of reads or counts
 #'
 reads_to_matrix <- function(data, column, return_counts = FALSE) {
   all_bins <- c()
@@ -33,14 +31,12 @@ reads_to_matrix <- function(data, column, return_counts = FALSE) {
   }
 }
 
-#' Title
+#' Sanitize_Ploidy
 #'
 #' @param expected_ploidy noisy estimator of true cell ploidy
 #'
-#' @return
-#' @export
+#' @return a vector of possible modal ploidy for the cell
 #'
-#' @examples
 sanitize_ploidy <- function(expected_ploidy){
   # If using the overlap calling pipeline
   if(!is.na(expected_ploidy)){
@@ -59,18 +55,59 @@ sanitize_ploidy <- function(expected_ploidy){
   return(modeState)
 }
 
-#' Title
+#' est_cn
 #'
-#' @param means output from the unbalanced haar transform
-#' @param use boolean array marking high quality bins
-#' @param expected_ploidy noisy estimator of true cell ploidy
-#' @param sigma standard deviation of the normal distribution
+#' @param values numeric vector of segmented read counts to fit
+#' @param uniploid estimated ratio of reads per copy number
+#' @param sigma estimate of the noise within the bins
+#' @param return_cn boolean to return the final CN + LogProb, or to return the BIC
 #'
-#' @return
-#' @export
+#' @return either a list containing the CN and logProb of fit, or the BIC for tuning
 #'
 #' @examples
-fitMeans <- function(means, use, sigma, expected_ploidy = NA){
+est_cn <- function(values, uniploid, sigma, return_cn = F){
+
+  # Get the total number of states (+1 to account for 0 copy regions) in the dataset
+  # given uniploid state & score the gaussians for each
+  numStates <- max(round(values/uniploid))+1
+  if(numStates>1000){
+    numStates <- 1000
+  }
+  scores <- matrix(nrow = numStates, ncol = length(values))
+  for(j in 1:numStates){
+    scores[j,] <- stats::dnorm(values,
+                               mean = uniploid*(j-1), # Account for 0 copy regions
+                               sd = sigma,
+                               log = T)
+  }
+
+  # Best fitting state is the normal that best fits each state
+  states <- apply(scores, 2, which.max)
+  topScores <- sapply(1:length(states), function(j) scores[states[j],j])
+  if(return_cn){
+    out <- list(fit = sum(topScores), states = states - 1)
+    return(out)
+  }else{
+    # If not outputting the just return the BIC
+    topScores <- sum(topScores)
+    n_cna <- sum(diff(states)!=0)
+    BIC <- -2 * sum(topScores) + log(length(states)) * n_cna
+    return(BIC)
+  }
+}
+
+#' fitMeans
+#'
+#' @param means numeric vector of segmented read counts to fit
+#' @param use logical vector indicating which bins are good to use
+#' @param sigma estimate of the noise within the bins - calculated by the residual of the reads - segmented state
+#' @param expected_ploidy noisy estimator of true cell ploidy - NA results in testing all Cell Ploidies 2-8
+#' @param tune_uniploid boolean to tune the reads per CN value to minimize the breakpoints & maximize the fit
+#'
+#' @return The final CN state for each bin
+#'
+#' @examples
+fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
 
   modeState <- sanitize_ploidy(expected_ploidy)
 
@@ -91,30 +128,18 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
     uniploid <- peak/modeState[i]
+    if(tune_uniploid){
+      lb <- (uniploid * modeState[i])/(modeState[i] + 0.5)
+      ub <- (uniploid * modeState[i])/(modeState[i] - 0.5)
+      best_uniploid <- optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
+                             return_cn = F, method = 'Brent', lower = lb, upper = ub)
+      uniploid <- best_uniploid$par
+    }
+    res <- est_cn(means, uniploid, sigma, return_cn = T)
+    fitScores <- c(fitScores, res$fit)
+    fitStates[i,] <- res$states
+    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states, sd = 1, expected_ploidy, log = T)))
 
-    # Get the total number of states (+1 to account for 0 copy regions) in the dataset
-    # given uniploid state & score the gaussians for each
-    numStates <- max(round(means/uniploid))+1
-    if(numStates>1000){
-      numStates <- 1000
-    }
-    scores <- matrix(nrow = numStates, ncol = nBins)
-    for(j in 1:numStates){
-      scores[j,] <- stats::dnorm(means,
-                                 mean = uniploid*(j-1), # Account for 0 copy regions
-                                 sd = sigma,
-                                 log = T)
-    }
-
-    # Best fitting state is the normal that best fits each state
-    states <- apply(scores, 2, which.max)
-    topScores <- rep(0, length(states))
-    for(j in 1:length(states)){
-      topScores[j] <- scores[states[j],j]
-    }
-    fitScores <- c(fitScores, sum(topScores))
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = states-1, sd = 1, expected_ploidy, log = T)))
-    fitStates[i,] <- states - 1
   }
 
   # Get the highest scoring fit and apply it to the good bins
@@ -123,6 +148,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
 
   # If there is no prior expected ploidy, place no weight on the state scores
   bestFit <- which.max(sum(stateScores, fitScores, na.rm = T))
+  print(bestFit)
   final_cn[use_idx] <- fitStates[bestFit,]
 
   # get true uniploid & apply to the remaining bins
@@ -132,22 +158,24 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
 }
 
 
-#' Title
+#' ploidy_correction
 #'
-#' @param sbird_sce
-#' @param min_reads
+#' @param sbird_sce the songbird object after subclone calling
+#' @param min_reads minimum number of reads to use a cell's ploidy estimation for correction
+#' @param column the column in colData to use for subclone membership, default is 'subclone'
 #'
-#' @return
+#' @return songbird object with corrected ploidy estimates
 #' @export
 #'
 #' @examples
-ploidy_correction <- function(sbird_sce, min_reads = 100000){
+ploidy_correction <- function(sbird_sce, min_reads = 100000, column = 'subclone'){
   # For each subclone average the ploidy_estimate
-  subclones <- unique(sbird_sce$subclone)
+  clonal_membership <- SingleCellExperiment::colData(sbird_sce)[[column]]
+  subclones <- unique(clonal_membership)
   sbird_sce$wgd <- FALSE
   sbird_sce$corr.ploidy <- NA
   for(subclone in subclones){
-    clone <- sbird_sce$subclone == subclone
+    clone <- clonal_membership == subclone
     est_ploidies <- sbird_sce$est_ploidy[clone]
     readCounts <- sbird_sce$total_reads[clone]
 
@@ -164,13 +192,12 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000){
   return(sbird_sce)
 }
 
-#' Title
+#' detect_wgd
 #'
-#' @param high_qPloidies
-#' @param all_ploidies
+#' @param high_qPloidies vector of ploidies that are used for correction
+#' @param all_ploidies all ploidies
 #'
-#' @return
-#' @export
+#' @return the WGD identity of cells - only detects 1 whole genome duplication
 #'
 #' @examples
 detect_wgd <- function(high_qPloidies, all_ploidies){
@@ -188,15 +215,16 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
   }
   return(wgd_cells)
 }
-#' Title
+
+#' copyCall
 #'
-#' @param sbird_sce the songbird single cell experiment object
+#' @param sbird_sce the songbird single cell experiment object - requires that 'segmented' and 'reads' assays are present
 #'
-#' @return
+#' @return songbird object with the copy number called for each bin
 #' @export
 #'
 #' @examples
-copyCall <- function(sbird_sce, num_cores = NULL){
+copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
@@ -209,27 +237,21 @@ copyCall <- function(sbird_sce, num_cores = NULL){
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) sd(x, na.rm = T))
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
-    fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])
+    fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
   }, mc.cores = num_cores)
 
   cn_matrix <- do.call(cbind, cn_matrix)
-  #for(i in 1:ncol(segmented_matrix)){
-  #
-  #  sigma <- sd((segmented_matrix[,i]-reads_matrix[,i])[use], na.rm = T)
-  #  cn_matrix <- cbind(cn_matrix, fitMeans(segmented_matrix[,i], use, sigma, sbird_sce$corr.ploidy[i]))
-  #  sigmas <- c(sigmas, sigma)
-  #}
+
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
   sbird_sce$bin_noise <- sigmas
   return(sbird_sce)
 }
 
-#' Title
+#' create_sce
 #'
-#' @param res
+#' @param res a list of results from cell processing
 #'
-#' @return
-#' @export
+#' @return the initial songbird object
 #'
 #' @examples
 create_sce <- function(res){
@@ -267,12 +289,11 @@ create_sce <- function(res){
   return(sbird_sce)
 }
 
-#' Title
+#' create_sce_from_res
 #'
-#' @param res
+#' @param res a list of results similar to the cell processing results
 #'
-#' @return
-#' @export
+#' @return songbird object with the reads, counts, and segmented data
 #'
 #' @examples
 create_sce_from_res <- function(res, n_cpu=NULL){

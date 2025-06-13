@@ -1,19 +1,19 @@
 
 #' Data Heatmap Plotter
 #'
-#' @param sce
-#' @param assay_name
-#' @param cell_attribs
-#' @param row_split
-#' @param rowClust
-#' @param use_raster
-#' @param bin_attribs
-#' @param return
-#' @param row_title
-#' @param plot_title
-#' @param legend_title
+#' @param sce songbird object
+#' @param assay_name the name of the assay to plot
+#' @param cell_attribs column name of the metadata you want plotted next to the cells
+#' @param row_split vector of identities to group the cells - typically subclonal id
+#' @param rowClust boolean indicating whether to cluster the rows of the heatmap
+#' @param use_raster boolean indicating whether to use raster graphics for the heatmap
+#' @param bin_attribs column name of the column attributes to plot above the heatmap
+#' @param return boolean indicating whether to return the heatmap object or just plot it out
+#' @param row_title title for the row labels of the heatmap
+#' @param plot_title title for the heatmap
+#' @param legend_title title for the heatmap legend
 #'
-#' @return
+#' @return a heatmap object if return = TRUE, otherwise plots the heatmap
 #' @export
 #'
 #' @examples
@@ -123,15 +123,13 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
   }
 }
 
-#' Title
+#' gen_annobar
 #'
-#' @param values
-#' @param orientation
-#' @param ylim
+#' @param values a vector of values to plot as an annotation bar
+#' @param orientation a string indicating the orientation of the annotation bar, either 'row' or 'column'
+#' @param ylim a numeric vector of length 2 indicating the limits of the y-axis for the barplot. If NULL, the limits will be set to the 1st and 99th percentiles of the values.
 #'
-#' @return
-#'
-#' @examples
+#' @return a ComplexHeatmap annotation object
 gen_annobar <- function(values, orientation, ylim = NULL){
   if(!is.numeric(values)){
     return(ComplexHeatmap::anno_simple(values, which = orientation))
@@ -146,25 +144,23 @@ gen_annobar <- function(values, orientation, ylim = NULL){
 }
 
 
-#' Title
+#' get_binMetadata
 #'
-#' @param sce
+#' @param sce songbird object
 #'
-#' @return
-#'
-#' @examples
+#' @return column metadata for the songbird object
 get_binMetadata <- function(sce){
   return(as.data.frame(sce@rowRanges@elementMetadata))
 }
 
-#' Title
+#' plot_cell
 #'
-#' @param sbird_sce
-#' @param cell
-#' @param chr
-#' @param return_plot
+#' @param sbird_sce songbird object
+#' @param cell cell name to plot
+#' @param chr chromosome to plot, if NULL all chromosomes will be plotted
+#' @param return_plot if TRUE, returns the plot object instead of plotting it
 #'
-#' @return
+#' @return a ggplot object or plots the data
 #' @export
 #'
 #' @examples
@@ -177,18 +173,27 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
                     bin_number = seq(1, nrow(reads_mtx)),
                     bin_name = rownames(reads_mtx))
   dat$outlier <- dat$copy > quantile(dat$copy, 0.95, na.rm = T)
-
-  # Set plotting max based on outliers
-  ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
-
   # Scale the reads to fit on the plot grid
   deviation <- mean(dat$copy, na.rm = TRUE) / mean(dat$reads, na.rm = TRUE)
   dat$adj_reads <- dat$reads*deviation
 
-  colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
-              '#d6804f', '#b3402e', '#821010', '#6a0936',
-              '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
-  names(colors) <- c(0:11)
+  # Set plotting max based on outliers
+  if(assay == 'copy'){
+    print('assay is copy')
+    ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
+
+    colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
+                '#d6804f', '#b3402e', '#821010', '#6a0936',
+                '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
+    names(colors) <- c(0:11)
+    dat$copy[dat$copy>11] <- 11
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
+      ggplot2::geom_point(ggplot2::aes(y = copy))
+  }else{
+    ymax <- quantile(dat$copy, 0.99, na.rm = T)
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
+      ggplot2::geom_point(ggplot2::aes(y = copy))
+  }
 
   # Get the plotting position for the chromsomes
   dat$chr <- gsub('^([0-9]+|X|Y)_.*', '\\1', dat$bin_name)
@@ -201,12 +206,14 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
   all_tics <- c(rep(NA, length(chr_locs)), rep('black', length(border_locs)))
 
   if(!is.null(chr)){dat <- dat[dat$chr==chr,]}
-  p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
-    ggplot2::geom_point(ggplot2::aes(y = copy)) +
-    ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors) +
+  p <- p + ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors) +
     ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
     ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + ggplot2::theme_classic() +
     ggplot2::theme(axis.ticks.x = ggplot2::element_line(color = all_tics))
+  #if(assay == 'copy'){
+  #  print('assay is still copy')
+  #  p <- p + ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors)
+  #}
 
   if(return_plot){return(p)}
   else{plot(p)}
