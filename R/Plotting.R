@@ -189,12 +189,12 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
                 '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
     names(colors) <- c(0:11)
     dat$copy[dat$copy>11] <- 11
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
-      ggplot2::geom_point(ggplot2::aes(y = copy))
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = ggplot2::.data$bin_number, y = ggplot2::.data$adj_reads, color = as.factor(ggplot2::.data$copy))) + ggplot2::geom_point(size = 0.3) +
+      ggplot2::geom_point(ggplot2::aes(y = ggplot2::.data$copy))
   }else{
     ymax <- stats::quantile(dat$copy, 0.99, na.rm = T)
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
-      ggplot2::geom_point(ggplot2::aes(y = copy))
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = ggplot2::.data$bin_number, y = ggplot2::.data$adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
+      ggplot2::geom_point(ggplot2::aes(y = ggplot2::.data$copy))
   }
 
   # Get the plotting position for the chromsomes
@@ -212,10 +212,6 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
     ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
     ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + ggplot2::theme_classic() +
     ggplot2::theme(axis.ticks.x = ggplot2::element_line(color = all_tics))
-  #if(assay == 'copy'){
-  #  print('assay is still copy')
-  #  p <- p + ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors)
-  #}
 
   if(return_plot){return(p)}
   else{plot(p)}

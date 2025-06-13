@@ -105,13 +105,11 @@ convert_long <- function(reads){
 #'
 #' @examples
 load_cell <- function(bamPath, binSize, genome){
-
   bins <- QDNAseq::getBinAnnotations(binSize = binSize/1000, genome = genome)
   bins@data$mappability <- as.numeric(bins@data$mappability)*100
   reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
-  #reads <- QDNAseq::applyFilters(reads, residual = F, blacklist = T)
   reads <- QDNAseq::estimateCorrection(reads)
-  reads.cor <- QDNAseq::correctBins(reads)
+  reads.cor <- QDNAseq::correctBins(reads, )
   return(list(reads = reads, reads.cor = reads.cor))
 }
 
