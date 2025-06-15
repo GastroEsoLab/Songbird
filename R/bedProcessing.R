@@ -20,9 +20,9 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
   }
 
   if(is.null(bedpes)){
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = 24)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
   }else{
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = 24)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
   }
   return(create_sce(res))
 }
@@ -39,7 +39,6 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #'
 #' @return corrected reads
 process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = 1000, tag_overlap = 9){
-  min.svSize <- min.svSize/bin.size
 
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- Songbird::convert_long(reads)

@@ -41,11 +41,13 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 ```R
 library(Songbird)
 folder = '~/hTert-1/individualBams'
-bams <- list.files(path = folder, pattern = ".bam$", full.names = T)
-bedpes <- list.files(path = folder, pattern = ".bedpe$", full.names = T)
-res <- mclapply(1:length(bams), function(i) process.cell(bams[i], bedpes[i], bin.size = 500000, min.svSize = 1e6, min_length = 50, max_length = 1000), mc.cores = 32)
-sbird_sce <- create_sce(res)
-sbird_sce <- identify_subclones(sbird_sce)
+bedpes <- list.files(folder, pattern = 'bedpe$', full.names = T)
+bams <- list.files(folder, pattern = 'bam$', full.names = T)
+sbird_sce <- Songbird::process.batch(bams = bams, bedpes = bedpes, genome = 'hg38', n_cpu = 36)
+sbird_sce <- identify_subclones(sbird_sce, k = 40)
 sbird_sce <- ploidy_correction(sbird_sce)
 sbird_sce <- copyCall(sbird_sce)
+sbird_sce <- identify_subclones(sbird_sce)
+
+plot_heatmap(sbird_sce, assay_name = 'copy', row_split = sbird_sce$subclone)
 ```
