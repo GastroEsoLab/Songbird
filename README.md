@@ -11,16 +11,14 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [x] minimize dependencies? (Rphenograph is github install only...)
 - [ ] Allow to skip WGD & Subclone ID
 - [ ] Build out Vignette and Documentation
-- [x] Allow recalibration of correction factor for ploidy estimation
-- [x] Add Parallel processing
 - [ ] Parameter checks for all user facing functions
 - [x] Convert all multicore to pbmcapply
 - [x] Write Sonbird creation functions from matrix
 - [ ] Check all combinations of byo matrix, and bam only for use with songbird
-- [x] Wrap bedpe/bam loading into a function 
 
 # To Done (almost) list!
 - [x] CN Caller
+  - [x] Wrap bedpe/bam loading into a function 
   - [x] read in bam file using qDNASeq
   - [x] Calculate GC+Map Correction
   - [x] Calculate per cell ploidy estimation
@@ -38,6 +36,8 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Handle empty bams and bedpes gracefully
   - [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
   - [x] Convert bed handling to data.table (read_table single core is the same speed)
+- [x] ~~Allow recalibration of correction factor for ploidy estimation~~ No longer using any correction factor
+- [x] Add Parallel processing
 # Minimal Vignette
 
 1. Preprocess bulk bam using the script in the `bash` folder
