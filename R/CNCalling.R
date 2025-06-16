@@ -168,9 +168,10 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
 #' @export
 #'
 #' @examples
-ploidy_correction <- function(sbird_sce, min_reads = 100000, column = 'subclone'){
+ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
   # For each subclone average the ploidy_estimate
-  clonal_membership <- SingleCellExperiment::colData(sbird_sce)[[column]]
+  sbird_sce <- identify_subclones(sbird_sce, assay = 'segmented', k = k, column_name = 'pc_groups')
+  clonal_membership <- SingleCellExperiment::colData(sbird_sce)[['pc_groups']]
   subclones <- unique(clonal_membership)
   sbird_sce$wgd <- FALSE
   sbird_sce$corr.ploidy <- NA

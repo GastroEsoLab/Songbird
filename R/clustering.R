@@ -13,7 +13,7 @@
 #' @export
 #'
 #' @examples
-identify_subclones <- function(sbird_sce, assay = 'segmented', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5, column_name = 'subclone'){
+identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5, column_name = 'subclone'){
   set.seed(seed)
   # Cluster the cells using the changepoint matrix and sce
   change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay),
@@ -114,7 +114,7 @@ inv_manhattan <- function(x, y){
 convert_mtxlong <- function(mtx){
   mtx <- data.frame(mtx)
   mtx$from <- mtx[,1]
-  mtx_long <- tidyr::pivot_longer(mtx, cols = -mtx$from, names_to = 'col', values_to = 'value')
+  mtx_long <- tidyr::pivot_longer(mtx, cols = -from, names_to = 'col', values_to = 'value')
   return(mtx_long)
 }
 

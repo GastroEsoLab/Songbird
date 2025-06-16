@@ -44,8 +44,7 @@ folder = '~/hTert-1/individualBams'
 bedpes <- list.files(folder, pattern = 'bedpe$', full.names = T)
 bams <- list.files(folder, pattern = 'bam$', full.names = T)
 sbird_sce <- Songbird::process.batch(bams = bams, bedpes = bedpes, genome = 'hg38', n_cpu = 36)
-sbird_sce <- identify_subclones(sbird_sce, k = 40)
-sbird_sce <- ploidy_correction(sbird_sce)
+sbird_sce <- ploidy_correction(sbird_sce, min_reads = 50000)
 sbird_sce <- copyCall(sbird_sce)
 sbird_sce <- identify_subclones(sbird_sce)
 
