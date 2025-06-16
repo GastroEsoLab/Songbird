@@ -3,7 +3,7 @@
 
 # Print a help message
 usage() {                                 # Function: Print a help message.
-    echo "Usage: $0 [ -b BAM File ] [ -o OUTPUT DIRECTORY ] [ -e CONTIGS TO EXCLUDE ]" 1>&2
+    echo "Usage: $0 [ -b BAM File ] [ -o OUTPUT DIRECTORY ]" 1>&2
     }
 
 # Exit errors
