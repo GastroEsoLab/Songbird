@@ -36,7 +36,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] Allow to skip any ploidy estimation (Default mean ploidy range 2-8)
   - [x] Handle empty bams and bedpes gracefully
   - [x] Add flexible tagmentation overlap (for scAbsolute's silliness)
-  - [x] Convert bed handling to data.table (read_table single core is the same speed)
+  - [x] ~~Convert bed handling to data.table~~ (read_table single core is the same speed & minimizes dependencies)
 - [x] ~~Allow recalibration of correction factor for ploidy estimation~~ No longer using any correction factor
 - [x] Add Parallel processing
 # Minimal Vignette
