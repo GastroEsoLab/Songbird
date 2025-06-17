@@ -15,6 +15,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [x] Convert all multicore to pbmcapply
 - [x] Write Sonbird creation functions from matrix
 - [ ] Check all combinations of byo matrix, and bam only for use with songbird
+- [ ] Allow merging of sbird_sce objects
 
 # To Done (almost) list!
 - [x] CN Caller
