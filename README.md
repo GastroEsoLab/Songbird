@@ -16,6 +16,11 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [x] Write Sonbird creation functions from matrix
 - [ ] Check all combinations of byo matrix, and bam only for use with songbird
 - [ ] Allow merging of sbird_sce objects
+- [ ] QDNASeq T2T for 50bp SE reads
+  - [ ] Get 50mer mappability track
+  - [ ] Get GC Content Track
+  - [ ] Identify Centromeric regions
+  - [ ] Create exclusion list [try [exclude ranges](https://dozmorovlab.github.io/excluderanges/)]
 
 # To Done (almost) list!
 - [x] CN Caller
