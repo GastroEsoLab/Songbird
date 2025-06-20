@@ -181,7 +181,6 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
 
   # Set plotting max based on outliers
   if(assay == 'copy'){
-    print('assay is copy')
     ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
 
     colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',

@@ -148,7 +148,6 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
 
   # If there is no prior expected ploidy, place no weight on the state scores
   bestFit <- which.max(sum(stateScores, fitScores, na.rm = T))
-  print(bestFit)
   final_cn[use_idx] <- fitStates[bestFit,]
 
   # get true uniploid & apply to the remaining bins

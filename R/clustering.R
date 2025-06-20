@@ -13,7 +13,7 @@
 #' @export
 #'
 #' @examples
-identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5, column_name = 'subclone'){
+identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, res = 'auto', method = inv_manhattan, min_size = 5, seed = 1234, min_readCount = 1e5, column_name = 'subclone'){
   set.seed(seed)
   # Cluster the cells using the changepoint matrix and sce
   change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay),
@@ -26,7 +26,7 @@ identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, method = inv_m
   knn_matrix <- knn_graph$nn.idx
 
   # perform clustering
-  membership <- clustering(knn_matrix = knn_matrix, feat_matrix = change_mtx, method = method)
+  membership <- clustering(knn_matrix = knn_matrix, feat_matrix = change_mtx, method = method, res = res)
 
   # Clusters under min_size are marked as 0
   subclones <- unique(membership)
@@ -118,6 +118,28 @@ convert_mtxlong <- function(mtx){
   return(mtx_long)
 }
 
+#' leiden
+#'
+#' @param graph
+#' @param res
+#' @return_modularity (default = TRUE)
+#'
+#' @return either modularity or the membership
+leiden <- function(graph, res, return_modularity = TRUE){
+  # Run the Leiden algorithm
+  clustering <- igraph::cluster_leiden(graph, resolution = res,
+                                       objective_function = 'modularity',
+                                       n_iterations = 5)
+  membership <- clustering$membership
+
+  if(return_modularity){
+    return(-igraph::modularity(graph, membership = membership))
+  } else {
+    return(membership)
+  }
+}
+
+
 #' clustering
 #'
 #' @param knn_matrix a matrix of k-nearest neighbors
@@ -125,7 +147,7 @@ convert_mtxlong <- function(mtx){
 #' @param method a function to calculate the affinity between cells
 #'
 #' @return a vector of cluster membership for each cell
-clustering <- function(knn_matrix, feat_matrix, method){
+clustering <- function(knn_matrix, feat_matrix, method, res = 'auto'){
   affy_matrix <- matrix(0, nrow = nrow(knn_matrix), ncol = ncol(knn_matrix))
   for(i in 1:nrow(knn_matrix)){
     for(j in 1:ncol(knn_matrix)){
@@ -137,17 +159,18 @@ clustering <- function(knn_matrix, feat_matrix, method){
   affy_long <- convert_mtxlong(affy_matrix)
   knn_long <- convert_mtxlong(knn_matrix)
   relations <- data.frame(from = knn_long$from, to = knn_long$value, weight = affy_long$value)
+  relations <- relations[relations$from!=relations$to, ]  # Remove self-loops
   graph <- igraph::graph_from_data_frame(relations, directed = F)
 
-  # Perform leiden clustering
-  target <- 150
-  avg_cellsClust <- 0
-  res <- 1
-  while(avg_cellsClust < target & res > 0.1){
-    # Perform clustering
-    clustering <- igraph::cluster_louvain(graph, resolution = res)
-    avg_cellsClust <- nrow(knn_matrix)/length(unique(clustering$membership))
-    res <- res - 0.1
+  if(res == 'auto'){
+    # Automatically determine the resolution parameter based on modularity
+    optim_res <- stats::optim(par = 1, fn = leiden, graph = graph, return_modularity = TRUE, method = 'L-BFGS-B', lower = 0.0001, upper = 10)
+    optim_res <- optim_res$par
+    message(paste0('Optimized resolution parameter: ', round(optim_res, 3)))
   }
-  return(clustering$membership)
+  else {
+    optim_res <- res
+  }
+  membership <- leiden(graph, optim_res, return_modularity = FALSE)
+  return(membership)
 }
