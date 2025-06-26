@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
+    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.75))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -84,14 +84,20 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
   # Best fitting state is the normal that best fits each state
   states <- apply(scores, 2, which.max)
   topScores <- sapply(1:length(states), function(j) scores[states[j],j])
+
+  topScores <- sum(topScores)
+  n_cna <- sum(diff(states)!=0)
+  BIC <- -2 * topScores + log(length(states)) * n_cna
+
   if(return_cn){
-    out <- list(fit = sum(topScores), states = states - 1)
+    out <- list(fit = BIC, states = states - 1)
     return(out)
   }else{
     # If not outputting the just return the BIC
     topScores <- sum(topScores)
     n_cna <- sum(diff(states)!=0)
-    BIC <- -2 * sum(topScores) + log(length(states)) * n_cna
+    BIC <- -2 * topScores + log(length(states)) * n_cna
+    #AIC <- -2 * topScores #+ 2*n_cna
     return(BIC)
   }
 }
@@ -108,7 +114,7 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
 #'
 #' @examples
 fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
-
+  # If expected ploidy is not provided, assume a range of possible ploidies
   modeState <- sanitize_ploidy(expected_ploidy)
 
   final_cn <- rep(NA, length(means))
@@ -138,16 +144,18 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
     res <- est_cn(means, uniploid, sigma, return_cn = T)
     fitScores <- c(fitScores, res$fit)
     fitStates[i,] <- res$states
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states, sd = 1, expected_ploidy, log = T)))
-
+    #stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states, sd = 2, expected_ploidy, log = T)))
   }
 
   # Get the highest scoring fit and apply it to the good bins
-  stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
+  #stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
+  stateScores <- c(NA, NA)
   fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
 
   # If there is no prior expected ploidy, place no weight on the state scores
-  bestFit <- which.max(sum(stateScores, fitScores, na.rm = T))
+  bestFit <- sapply(1:length(stateScores), function(x) sum(stateScores[x], fitScores[x], na.rm = T))
+  #bestFit <- which.max(bestFit)
+  bestFit <- which.min(bestFit)
   final_cn[use_idx] <- fitStates[bestFit,]
 
   # get true uniploid & apply to the remaining bins
@@ -227,6 +235,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #'
 #' @examples
 copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
+  print('new cn caller')
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
@@ -235,7 +244,7 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   segmented_matrix <- SummarizedExperiment::assay(sbird_sce, 'segmented')
   reads_matrix <- SummarizedExperiment::assay(sbird_sce, 'reads')
 
-  use <- SummarizedExperiment::rowData(sbird_sce)$overlap_use
+  use <- SummarizedExperiment::rowData(sbird_sce)$euchromatin
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
@@ -288,6 +297,7 @@ create_sce <- function(res){
   SummarizedExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
   SummarizedExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
   SummarizedExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
+  SummarizedExperiment::rowData(sbird_sce)$euchromatin <- res[[1]]$euchromatin
   return(sbird_sce)
 }
 

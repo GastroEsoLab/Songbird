@@ -188,12 +188,12 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
                 '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
     names(colors) <- c(0:11)
     dat$copy[dat$copy>11] <- 11
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = ggplot2::.data$bin_number, y = ggplot2::.data$adj_reads, color = as.factor(ggplot2::.data$copy))) + ggplot2::geom_point(size = 0.3) +
-      ggplot2::geom_point(ggplot2::aes(y = ggplot2::.data$copy))
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
+      ggplot2::geom_point(ggplot2::aes(y = copy))
   }else{
     ymax <- stats::quantile(dat$copy, 0.99, na.rm = T)
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = ggplot2::.data$bin_number, y = ggplot2::.data$adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
-      ggplot2::geom_point(ggplot2::aes(y = ggplot2::.data$copy))
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
+      ggplot2::geom_point(ggplot2::aes(y = copy))
   }
 
   # Get the plotting position for the chromsomes

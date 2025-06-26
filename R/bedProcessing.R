@@ -23,6 +23,7 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
     res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
   }else{
     res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
+    #res <- lapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap))
   }
   return(create_sce(res))
 }
@@ -47,7 +48,20 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
   num_reads <- c(sum(reads.cor$uncorrected.reads))
 
   # Get mode CN indices
-  reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
+  if(genome == 'hg38'){
+    centromeres <- read.table('/home/bkw2118/EAC_Analysis/2025-07-03/Centromeres.bed')
+    centromeres$V1 <- gsub('chr', '', centromeres$V1)
+    centromeres <- GenomicRanges::GRanges(seqnames = centromeres$V1, ranges = IRanges::IRanges(start = centromeres$V2, end = centromeres$V3))
+    bin_ranges <- GenomicRanges::GRanges(seqnames = reads.cor$chromosome, ranges = IRanges::IRanges(start = reads.cor$start, end = reads.cor$end))
+
+    bin_overlap <- GenomicRanges::findOverlaps(bin_ranges, centromeres)
+    reads.cor$euchromatin <- TRUE
+    reads.cor$euchromatin[bin_overlap@from] <- FALSE
+    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$euchromatin)
+  }else{
+    reads.cor$euchromatin <- NA
+    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
+  }
   reads.cor$num_reads <- num_reads
   reads.cor$bam_file <- bam
   reads.cor$bedpe_file <- bedpe
@@ -108,7 +122,7 @@ load_cell <- function(bamPath, binSize, genome){
   bins@data$mappability <- as.numeric(bins@data$mappability)*100
   reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
   reads <- QDNAseq::estimateCorrection(reads)
-  reads.cor <- QDNAseq::correctBins(reads, )
+  reads.cor <- QDNAseq::correctBins(reads)
   return(list(reads = reads, reads.cor = reads.cor))
 }
 
