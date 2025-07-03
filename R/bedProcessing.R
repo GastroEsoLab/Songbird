@@ -118,10 +118,12 @@ convert_long <- function(reads){
 #'
 #' @examples
 load_cell <- function(bamPath, binSize, genome){
-  bins <- QDNAseq::getBinAnnotations(binSize = binSize/1000, genome = genome)
+  bins <- QDNAseq::getBinAnnotations(binSize = binSize/1000, genome = genome, verbose = F)
   bins@data$mappability <- as.numeric(bins@data$mappability)*100
-  reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T)
+  reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T, verbose = F)
+  reads <- QDNAseq::applyFilters(reads, verbose = F)
   reads <- QDNAseq::estimateCorrection(reads)
+  reads <- QDNAseq::applyFilters(reads, chromosomes = NA, verbose = F)
   reads.cor <- QDNAseq::correctBins(reads)
   return(list(reads = reads, reads.cor = reads.cor))
 }
@@ -368,7 +370,7 @@ estimate.ploidy <- function(sample, binSize, genome, min_length = 50, max_length
   }
 
   # Create the bin aggregated data to identify regions where we want to measure the overlap statistics
-  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = genome)
+  bins <- QDNAseq::getBinAnnotations(binSize/1000, genome = genome, verbose = F)
   bin_data <- bins@data
 
   if(genome == 'chm13v2'){

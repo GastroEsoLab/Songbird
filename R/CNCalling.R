@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.75))
+    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -64,6 +64,7 @@ sanitize_ploidy <- function(expected_ploidy){
 #'
 #' @return either a list containing the CN and logProb of fit, or the BIC for tuning
 #'
+#' @export
 #' @examples
 est_cn <- function(values, uniploid, sigma, return_cn = F){
 
@@ -85,19 +86,18 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
   states <- apply(scores, 2, which.max)
   topScores <- sapply(1:length(states), function(j) scores[states[j],j])
 
-  topScores <- sum(topScores)
+  #topScores <- sum(topScores)
   n_cna <- sum(diff(states)!=0)
-  BIC <- -2 * topScores + log(length(states)) * n_cna
+  BIC <- -2 * sum(topScores) + log(length(states)) * n_cna
 
   if(return_cn){
-    out <- list(fit = BIC, states = states - 1)
+    out <- list(fit = topScores, states = states - 1)
     return(out)
   }else{
     # If not outputting the just return the BIC
     topScores <- sum(topScores)
     n_cna <- sum(diff(states)!=0)
     BIC <- -2 * topScores + log(length(states)) * n_cna
-    #AIC <- -2 * topScores #+ 2*n_cna
     return(BIC)
   }
 }
@@ -130,7 +130,13 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
   fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
   stateScores <- c() # How well does the inferred states fit our strong prior that cells should be diploid?
   fitStates <- matrix(nrow = length(modeState), ncol = nBins)
+  nullScores <- c()
 
+  # Simulate the null distribution
+  mid_means <- means >= quantile(means, 0.05, na.rm = T) & means < quantile(means, 0.95, na.rm = T)
+  null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sd(means, na.rm = T))
+
+  optim_rpcns <- c()
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
     uniploid <- peak/modeState[i]
@@ -142,24 +148,31 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
       uniploid <- best_uniploid$par
     }
     res <- est_cn(means, uniploid, sigma, return_cn = T)
-    fitScores <- c(fitScores, res$fit)
+    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
+    fitScores <- c(fitScores, res$fit[mid_means])
     fitStates[i,] <- res$states
-    #stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states, sd = 2, expected_ploidy, log = T)))
+    nullScores <- c(nullScores, null_res$fit)
+    optim_rpcns[i] <- uniploid
+    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
   }
+
 
   # Get the highest scoring fit and apply it to the good bins
   #stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
-  stateScores <- c(NA, NA)
-  fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
+  #stateScores <- rep(NA, length(modeState))
 
+  #fitScores <- fitScores - nullScores
+
+  #fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
+  #nullScores <- sapply(nullScores, function(x) x-matrixStats::logSumExp(nullScores))
   # If there is no prior expected ploidy, place no weight on the state scores
   bestFit <- sapply(1:length(stateScores), function(x) sum(stateScores[x], fitScores[x], na.rm = T))
-  #bestFit <- which.max(bestFit)
-  bestFit <- which.min(bestFit)
+  bestFit <- which.max(bestFit)
+  #bestFit <- which.max(fitScores)
   final_cn[use_idx] <- fitStates[bestFit,]
 
   # get true uniploid & apply to the remaining bins
-  best_uniploid <- peak/modeState[bestFit]
+  best_uniploid <- optim_rpcns[bestFit]
   final_cn[!use_idx] <- round(all_means[!use_idx]/best_uniploid)
   return(final_cn)
 }
@@ -235,7 +248,6 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #'
 #' @examples
 copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
-  print('new cn caller')
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
@@ -250,7 +262,9 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
     fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
   }, mc.cores = num_cores)
-
+  #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i)
+  #  fitMeans(segmented_matrix[,i], use, sigmas[i],
+  #           sbird_sce$corr.ploidy[i], tune_uniploid))
   cn_matrix <- do.call(cbind, cn_matrix)
 
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix

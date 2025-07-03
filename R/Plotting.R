@@ -25,6 +25,7 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
 
   # Extract the matrix and split by chromosomes
   matrix <- t(SummarizedExperiment::assay(sce, assay_name))
+  matrix[is.na(matrix)] <- 0
   chr_names <- SingleCellExperiment::rowData(sce)$chr
 
   #Put a new line after odd chromosome names and before even chromosome names
