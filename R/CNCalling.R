@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
+    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.75))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -113,18 +113,19 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
 #' @return The final CN state for each bin
 #'
 #' @examples
-fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
+fitMeans <- function(seg, reads, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
   # If expected ploidy is not provided, assume a range of possible ploidies
   modeState <- sanitize_ploidy(expected_ploidy)
 
-  final_cn <- rep(NA, length(means))
-  all_means <- means
-  use_idx <- which(use & !is.na(means))
-  means <- means[use_idx]
-  nBins <- length(means)
+  final_cn <- rep(NA, length(seg))
+  all_seg <- seg
+  use_idx <- which(use & !is.na(seg))
+  seg <- seg[use_idx]
+  reads <- reads[use_idx]
+  nBins <- length(seg)
 
   # Identify largest peak and propose CN state
-  dens <- stats::density(means)
+  dens <- stats::density(seg)
   peak <- abs(dens$x[which.max(dens$y)])
 
   fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
@@ -133,8 +134,8 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
   nullScores <- c()
 
   # Simulate the null distribution
-  mid_means <- means >= quantile(means, 0.05, na.rm = T) & means < quantile(means, 0.95, na.rm = T)
-  null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sd(means, na.rm = T))
+  mid_seg <- seg >= quantile(seg, 0.05, na.rm = T) & seg < quantile(seg, 0.95, na.rm = T)
+  null_seg <- rnorm(length(seg), mean = mean(seg, na.rm = T), sd = sd(seg, na.rm = T))
 
   optim_rpcns <- c()
   for(i in 1:length(modeState)){
@@ -143,17 +144,23 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
     if(tune_uniploid){
       lb <- (uniploid * modeState[i])/(modeState[i] + 0.5)
       ub <- (uniploid * modeState[i])/(modeState[i] - 0.5)
-      best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
+      best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = seg, sigma = sigma,
                              return_cn = F, method = 'Brent', lower = lb, upper = ub)
       uniploid <- best_uniploid$par
     }
-    res <- est_cn(means, uniploid, sigma, return_cn = T)
-    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
-    fitScores <- c(fitScores, res$fit[mid_means])
+    res <- est_cn(seg, uniploid, sigma, return_cn = T)
+    null_res <- est_cn(null_seg, uniploid, sigma, return_cn = T)
+    #fitScores <- c(fitScores, res$fit[mid_seg])
     fitStates[i,] <- res$states
     nullScores <- c(nullScores, null_res$fit)
     optim_rpcns[i] <- uniploid
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
+    error <- sum(abs(reads[mid_seg] - res$states[mid_seg]*uniploid), na.rm = T)
+    #print(paste0("Mode State: ", modeState[i], " Uniploid: ", uniploid, " Error: ", error))
+
+    # Fit score is the sum of the normal distribution fit on each bin
+    fitScore <- sapply(1:nBins, function(j) stats::dnorm(reads[mid_seg][j], mean = res$states[mid_seg][j]*uniploid, sd = sigma, log = T))
+    fitScores <- c(fitScores, sum(fitScore, na.rm = T))
+    stateScores <- c(stateScores, sum(stats::dnorm(res$states[mid_seg], sd = 1, mean = expected_ploidy, log = T)))
   }
 
 
@@ -173,7 +180,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
 
   # get true uniploid & apply to the remaining bins
   best_uniploid <- optim_rpcns[bestFit]
-  final_cn[!use_idx] <- round(all_means[!use_idx]/best_uniploid)
+  final_cn[!use_idx] <- round(all_seg[!use_idx]/best_uniploid)
   return(final_cn)
 }
 
@@ -260,10 +267,10 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
-    fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
+    fitMeans(segmented_matrix[,i], reads_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
   }, mc.cores = num_cores)
   #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i)
-  #  fitMeans(segmented_matrix[,i], use, sigmas[i],
+  #  fitMeans(segmented_matrix[,i], reads_matrix[,i], use, sigmas[i],
   #           sbird_sce$corr.ploidy[i], tune_uniploid))
   cn_matrix <- do.call(cbind, cn_matrix)
 
