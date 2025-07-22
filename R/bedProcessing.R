@@ -58,6 +58,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
     reads.cor$euchromatin <- TRUE
     reads.cor$euchromatin[bin_overlap@from] <- FALSE
     reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$euchromatin)
+    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
   }else{
     reads.cor$euchromatin <- NA
     reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
@@ -149,6 +150,7 @@ ubh_segment <- function(values, use){
   transform.filt <- unbalhaar::hard.thresh(transform, init_sigma)
   reconstr <- unbalhaar::reconstr(transform.filt)
   out[real_idxs] <- reconstr
+  out[is.na(out)] <- 0
   return(out)
 }
 
@@ -311,7 +313,7 @@ count.doublets <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
 count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10) {
   # bed <- tmp2
   upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size + tag.overlap,
-                                      end = bed$Start - 1)
+                                      end = bed$Start - min.size - 1)
   upstream.counting <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                ranges = upstream.ranges)
 
@@ -331,7 +333,7 @@ count.overlaps <- function(bed, min.size = 50, max.size = 1000, tag.overlap = 10
 
   data.out <- data.frame(Count.Upstream = counted.upstream.overlaps,
                          Count.Over = counted.over.overlaps,
-                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - tag.overlap),
+                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - tag.overlap - min.size),
                          Norm.Count.Over = counted.over.overlaps / (min.size - tag.overlap))
   data.out <- cbind(bed, data.out)
   return(data.out)

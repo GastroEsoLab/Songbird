@@ -19,15 +19,16 @@ identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, res = 'auto', 
   change_mtx <- generate_changepoint_matrix(SummarizedExperiment::assay(sbird_sce, assay),
                                             bin_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use,
                                             cell_mask = sbird_sce$total_reads > min_readCount)
+  change_mtx[is.na(change_mtx)] <- 0  # Replace NAs with 0s
   SingleCellExperiment::reducedDim(sbird_sce, paste0(assay, '_changepoint')) <- change_mtx
 
   # Make graph
   knn_graph <- RANN::nn2(change_mtx, k = k)
   knn_matrix <- knn_graph$nn.idx
+  knn_matrix[,1] <- 1:nrow(knn_matrix)  # Set the first column to be the cell index - if two cells have identical brake points, they will be overwritten
 
   # perform clustering
   membership <- clustering(knn_matrix = knn_matrix, feat_matrix = change_mtx, method = method, res = res)
-
   # Clusters under min_size are marked as 0
   subclones <- unique(membership)
   subclone_counts <- sapply(subclones, function(x) sum(membership == x))
@@ -81,11 +82,11 @@ gauss_kernel <- function(matrix, n_neighbors){
 #' @return a matrix of changepoints
 generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
   # Find the change points in the mixed matrix
-  matrix <- t(matrix)[,bin_mask]
+  matrix <- t(matrix)#[,bin_mask]
   change_mtx <- t(apply(matrix, 1, diff))
 
   # Smooth the change matrix by applying a gaussian kernel
-  kernel_mtx <- round(gauss_kernel(change_mtx, 5), 2)
+  kernel_mtx <- round(gauss_kernel(change_mtx, 7), 2)
 
   # Select change points observed in more than 10% of cells
   highq_mtx <- kernel_mtx[cell_mask,,drop=F]
@@ -99,12 +100,33 @@ generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
 #' @param x a vector of changepoints
 #' @param y a vector of changepoints
 #'
-#' @return a matrix of changepoints
+#' @return the inverse distance between the two changepoints
 #' @export
 inv_manhattan <- function(x, y){
   # x and y are vectors of the same length
   l1_dist <- sum(abs(x-y))
   return(1/(1+l1_dist))
+}
+
+#' inv_wasserstein
+#'
+#'
+#' @param x a vector of changepoints
+#' @param y a vector of changepoints
+#'
+#' @return the inverse Wasserstein distance between the two changepoints
+#' @export
+inv_wasserstein <- function(x, y){
+  # x and y are vectors of the same length
+  if(length(x) != length(y)){
+    stop('x and y must be of the same length')
+  }
+
+  # Calculate the Wasserstein distance
+  wasserstein_dist <- sum(abs(cumsum(x) - cumsum(y)))
+
+  # Return the inverse distance
+  return(1/(1 + wasserstein_dist))
 }
 
 #' convert_mtxlong
@@ -150,7 +172,7 @@ leiden <- function(graph, res, return_modularity = TRUE){
 clustering <- function(knn_matrix, feat_matrix, method, res = 'auto'){
   affy_matrix <- matrix(0, nrow = nrow(knn_matrix), ncol = ncol(knn_matrix))
   for(i in 1:nrow(knn_matrix)){
-    for(j in 1:ncol(knn_matrix)){
+    for(j in 2:ncol(knn_matrix)){
       neigh_idx <- knn_matrix[i, j]
       affy_matrix[i,j] <- method(feat_matrix[i,], feat_matrix[neigh_idx,])
     }
@@ -161,7 +183,6 @@ clustering <- function(knn_matrix, feat_matrix, method, res = 'auto'){
   relations <- data.frame(from = knn_long$from, to = knn_long$value, weight = affy_long$value)
   relations <- relations[relations$from!=relations$to, ]  # Remove self-loops
   graph <- igraph::graph_from_data_frame(relations, directed = F)
-
   if(res == 'auto'){
     # Automatically determine the resolution parameter based on modularity
     optim_res <- stats::optim(par = 1, fn = leiden, graph = graph, return_modularity = TRUE, method = 'L-BFGS-B', lower = 0.0001, upper = 10)

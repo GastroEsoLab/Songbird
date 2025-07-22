@@ -119,51 +119,70 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
 
   final_cn <- rep(NA, length(means))
   all_means <- means
-  use_idx <- which(use & !is.na(means))
+
+  # Values we want are labelled use, are real, and not close to zero
+  use_idx <- which(use & !is.na(means) & means > 1e-3)
   means <- means[use_idx]
   nBins <- length(means)
 
   # Identify largest peak and propose CN state
-  dens <- stats::density(means)
-  peak <- abs(dens$x[which.max(dens$y)])
+  #dens <- stats::density(means)
+  #peak <- abs(dens$x[which.max(dens$y)])
+  peak <- median(means, na.rm = TRUE)
+  if(peak < 0){
+    means <- abs(means)
+    peak <- median(means, na.rm = TRUE)
+  }
 
   fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
   stateScores <- c() # How well does the inferred states fit our strong prior that cells should be diploid?
   fitStates <- matrix(nrow = length(modeState), ncol = nBins)
-  nullScores <- c()
+  #nullScores <- c()
 
   # Simulate the null distribution
-  mid_means <- means >= quantile(means, 0.05, na.rm = T) & means < quantile(means, 0.95, na.rm = T)
-  null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sd(means, na.rm = T))
+  # Mid means should be the middle 90% of the means, so sort values and exclue the values that are in the top and bottom 5%
+  z_means <- scale(means, center = TRUE, scale = TRUE)
+  mid_means <- abs(z_means) < 3
+  #mid_means <- means >= quantile(means, 0.05, na.rm = T) & means < quantile(means, 0.95, na.rm = T)
+  #null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sd(means, na.rm = T))
 
   optim_rpcns <- c()
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
     uniploid <- peak/modeState[i]
-    if(tune_uniploid){
-      lb <- (uniploid * modeState[i])/(modeState[i] + 0.5)
-      ub <- (uniploid * modeState[i])/(modeState[i] - 0.5)
-      best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
-                             return_cn = F, method = 'Brent', lower = lb, upper = ub)
-      uniploid <- best_uniploid$par
+
+    # Tune the estimated uniploid value
+    lb <- (uniploid * modeState[i])/(modeState[i] + 0.5)
+    ub <- (uniploid * modeState[i])/(modeState[i] - 0.5)
+    if(ub < lb){
+      lb <- 0.5 * uniploid
+      ub <- 2 * uniploid
     }
+    best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
+                           return_cn = F, method = 'Brent', lower = lb, upper = ub)
+    uniploid <- best_uniploid$par
+
+    # Predict CN States
     res <- est_cn(means, uniploid, sigma, return_cn = T)
-    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
-    fitScores <- c(fitScores, res$fit[mid_means])
+    #null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
+    fitScores <- c(fitScores, sum(res$fit[mid_means]))
     fitStates[i,] <- res$states
-    nullScores <- c(nullScores, null_res$fit)
+    #nullScores <- c(nullScores, sum(null_res$fit))
     optim_rpcns[i] <- uniploid
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
+    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 3, expected_ploidy, log = T)))
   }
 
-
+  #bestFit <- sapply(1:length(modeState), function(x) modeState[x]*log(length(means)) - 2 * fitScores[x])
+  #1*log(length(means)) - 2 * fitScores[1]
   # Get the highest scoring fit and apply it to the good bins
   #stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
   #stateScores <- rep(NA, length(modeState))
 
   #fitScores <- fitScores - nullScores
 
-  #fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
+  fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
+  stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
+  #bestFit <- fitScores + stateScores
   #nullScores <- sapply(nullScores, function(x) x-matrixStats::logSumExp(nullScores))
   # If there is no prior expected ploidy, place no weight on the state scores
   bestFit <- sapply(1:length(stateScores), function(x) sum(stateScores[x], fitScores[x], na.rm = T))
@@ -256,12 +275,18 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   segmented_matrix <- SummarizedExperiment::assay(sbird_sce, 'segmented')
   reads_matrix <- SummarizedExperiment::assay(sbird_sce, 'reads')
 
-  use <- SummarizedExperiment::rowData(sbird_sce)$euchromatin
+  use <- TRUE
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
   cn_matrix <- parallel::mclapply(1:ncol(segmented_matrix), function(i){
     fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)
   }, mc.cores = num_cores)
+
+  #for(i in 1:ncol(segmented_matrix)){
+  #  value = fitMeans(segmented_matrix[,i], use, sigmas[i],
+  #                   sbird_sce$corr.ploidy[i], tune_uniploid)
+  #  print(i)
+  #}
   #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i)
   #  fitMeans(segmented_matrix[,i], use, sigmas[i],
   #           sbird_sce$corr.ploidy[i], tune_uniploid))
