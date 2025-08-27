@@ -55,9 +55,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
     bin_ranges <- GenomicRanges::GRanges(seqnames = reads.cor$chromosome, ranges = IRanges::IRanges(start = reads.cor$start, end = reads.cor$end))
 
     bin_overlap <- GenomicRanges::findOverlaps(bin_ranges, centromeres)
-    reads.cor$euchromatin <- TRUE
-    reads.cor$euchromatin[bin_overlap@from] <- FALSE
-    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$euchromatin)
+    reads.cor$reads[is.na(reads.cor$reads)] <- 0
     reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
   }else{
     reads.cor$euchromatin <- NA
@@ -223,7 +221,15 @@ prune_offsets <- function(ubh_obj, reads, min_svSize){
 #'
 #' @return a data frame set up as a traditional bed file
 load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_length = 1000){
-  bedpe <- utils::read.table(bedpe_file, sep = '\t')
+  bedpe <- tryCatch({utils::read.table(bedpe_file, sep = '\t')},
+                    error = function(e) {
+                      warning(paste0("Empty Bedpe file :", bedpe_file, ". Returning empty data frame."))
+                      return(data.frame(Chr1 = character(0), Start1 = integer(0), End1 = integer(0),
+                                          Chr2 = character(0), Start2 = integer(0), End2 = integer(0),
+                                          Name = character(0), Score = numeric(0),
+                                          R1_direction = character(0), R2_direction = character(0)))})
+  if (nrow(bedpe) == 0) {return(bedpe)}
+
   colnames(bedpe) <- c('Chr1', 'Start1', 'End1', 'Chr2', 'Start2', 'End2', 'Name', 'Score', 'R1_direction', 'R2_direction')
   bed <- data.frame(Chr = bedpe$Chr1, Start = bedpe$Start1, End = bedpe$End1,
                     Name = paste0(bedpe$Name, ':', bedpe$R1_direction, '/', bedpe$R2_direction))
