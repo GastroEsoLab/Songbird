@@ -231,15 +231,15 @@ load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_lengt
   if (nrow(bedpe) == 0) {return(bedpe)}
 
   colnames(bedpe) <- c('Chr1', 'Start1', 'End1', 'Chr2', 'Start2', 'End2', 'Name', 'Score', 'R1_direction', 'R2_direction')
-  bed <- data.frame(Chr = bedpe$Chr1, Start = bedpe$Start1, End = bedpe$End1,
+  bed <- data.frame(Chr = bedpe$Chr1,
+                    Start = apply(cbind(bedpe$Start1, bedpe$Start2), 1, min), # Read start is minimum of start1 or start2
+                    End = apply(cbind(bedpe$End1, bedpe$End2), 1, max), # Read end is maximum of end1 or end2
                     Name = paste0(bedpe$Name, ':', bedpe$R1_direction, '/', bedpe$R2_direction))
-
+  bed$Length <- bed$End - bed$Start
 
   # Set the read start as the minimum of start1 or start2, and read end as maximum of end1 and end2
-  bed$Start <- apply(cbind(bedpe$Start1, bedpe$Start2), 1, min)
-  bed$End <- apply(cbind(bedpe$End1, bedpe$End2), 1, max)
-
-  bed$Length <- bed$End - bed$Start
+  #bed$Start <- apply(cbind(bedpe$Start1, bedpe$Start2), 1, min)
+  #bed$End <- apply(cbind(bedpe$End1, bedpe$End2), 1, max)
 
   bed <- bed[(bed$Length > min_length) & (bed$Length < max_length),]
   bed$Strandedness <- extractStrandedness(bed$Name, 3)
@@ -250,7 +250,7 @@ load.preprocess.bed <- function(bedpe_file, bin_data, min_length = 30, max_lengt
     bed$Chr <- paste0('chr', bed$Chr)
   }
 
-  bed <- bed[grep('(chr[0-9]+|X|Y)$', bed$Chr),]
+  bed <- bed[grep('(chr[0-9]+|X|Y)$', bed$Chr),] # Remove all decoy and alt contigs
 
   bed <- filter.bed(bed, bin_data)
   return(bed)
