@@ -4,7 +4,7 @@
 \alias{ploidy_correction}
 \title{ploidy_correction}
 \usage{
-ploidy_correction(sbird_sce, min_reads = 1e+05, column = "subclone")
+ploidy_correction(sbird_sce, min_reads = 1e+05, k = 45)
 }
 \arguments{
 \item{sbird_sce}{the songbird object after subclone calling}

@@ -4,7 +4,7 @@
 \alias{clustering}
 \title{clustering}
 \usage{
-clustering(knn_matrix, feat_matrix, method)
+clustering(knn_matrix, feat_matrix, method, res = "auto")
 }
 \arguments{
 \item{knn_matrix}{a matrix of k-nearest neighbors}

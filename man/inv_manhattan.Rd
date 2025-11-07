@@ -12,7 +12,7 @@ inv_manhattan(x, y)
 \item{y}{a vector of changepoints}
 }
 \value{
-a matrix of changepoints
+the inverse distance between the two changepoints
 }
 \description{
 inv_manhattan

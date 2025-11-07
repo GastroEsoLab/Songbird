@@ -95,9 +95,6 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
     return(out)
   }else{
     # If not outputting the just return the BIC
-    #topScores <- sum(topScores)
-    #n_cna <- sum(diff(states)!=0)
-    #BIC <- -2 * topScores + log(length(states)) * n_cna
     return(BIC)
   }
 }
@@ -137,7 +134,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
   fitStates <- matrix(nrow = length(modeState), ncol = nBins)
   nullScores <- c()
 
-  # Mid means should be the middle 90% of the means, so sort values and exclue the values that are in the top and bottom 5%
+  # Mid means should be the middle 90% of the means, so sort values and exclude the values that are in the top and bottom 5%
   z_means <- scale(means, center = TRUE, scale = TRUE)
   mid_means <- abs(z_means) < 3
   null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sigma)#sd = sd(means, na.rm = T))
@@ -160,21 +157,19 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
 
     # Predict CN States
     res <- est_cn(means, uniploid, sigma, return_cn = T)
-    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
-    #fitScores <- c(fitScores, -2*sum(res$fit[mid_means], na.rm = T) + log(sum(mid_means)) * sum(diff(res$states), na.rm = T))
     fitScores <- c(fitScores, sum(res$fit[mid_means]))
     fitStates[i,] <- res$states
+
+    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
     nullScores <- c(nullScores, sum(null_res$fit[mid_means]))
     optim_rpcns[i] <- uniploid
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 3, expected_ploidy, log = T)))
+    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
   }
 
   fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
   nullScores <- sapply(nullScores, function(x) x-matrixStats::logSumExp(nullScores))
-  #stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
 
   # If there is no prior expected ploidy, place no weight on the state scores
-  #bestFit <- sapply(1:length(stateScores), function(x) sum(stateScores[x], fitScores[x], na.rm = T))
   bestFit <- which.max(fitScores - nullScores)
   final_cn[use_idx] <- fitStates[bestFit,]
 
