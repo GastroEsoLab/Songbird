@@ -2,6 +2,7 @@
 
 export(copyCall)
 export(est_cn)
+export(fitMeans)
 export(identify_subclones)
 export(inv_manhattan)
 export(inv_wasserstein)

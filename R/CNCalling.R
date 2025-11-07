@@ -86,17 +86,26 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
   states <- apply(scores, 2, which.max)
   topScores <- sapply(1:length(states), function(j) scores[states[j],j])
 
-  #topScores <- sum(topScores)
-  n_cna <- sum(diff(states)!=0)
-  BIC <- -2 * sum(topScores) + log(length(states)) * n_cna
-
   if(return_cn){
     out <- list(fit = topScores, states = states - 1)
     return(out)
   }else{
-    # If not outputting the just return the BIC
-    return(BIC)
+    return(sum(topScores))
   }
+}
+
+#' tune_rpcn
+#'
+#' @param values numeric vector of segmented read counts to fit
+#' @param null numeric vector of null values to compare against
+#' @param uniploid estimated ratio of reads per copy number
+#' @param sigma estimate of the noise within the bins
+#'
+#' @return negative log likelihood (for minimization by an optimizer)
+#'
+tune_rpcn <- function(values, null, uniploid, sigma){
+  score <- est_cn(values, uniploid, sigma) - est_cn(null, uniploid, sigma)
+  return(-score)
 }
 
 #' fitMeans
@@ -105,12 +114,10 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
 #' @param use logical vector indicating which bins are good to use
 #' @param sigma estimate of the noise within the bins - calculated by the residual of the reads - segmented state
 #' @param expected_ploidy noisy estimator of true cell ploidy - NA results in testing all Cell Ploidies 2-8
-#' @param tune_uniploid boolean to tune the reads per CN value to minimize the breakpoints & maximize the fit
 #'
 #' @return The final CN state for each bin
-#'
-#' @examples
-fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
+#' @export
+fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   # If expected ploidy is not provided, assume a range of possible ploidies
   modeState <- sanitize_ploidy(expected_ploidy)
 
@@ -151,8 +158,8 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
       lb <- 0.5 * uniploid
       ub <- 2 * uniploid
     }
-    best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
-                           return_cn = F, method = 'Brent', lower = lb, upper = ub)
+    best_uniploid <- stats::optim(par = uniploid, fn = tune_rpcn, values = means, null = null_means,
+                                  sigma = sigma, method = 'Brent', lower = lb, upper = ub)
     uniploid <- best_uniploid$par
 
     # Predict CN States
@@ -249,7 +256,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @export
 #'
 #' @examples
-copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
+copyCall <- function(sbird_sce, num_cores = NULL){
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
@@ -261,16 +268,7 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
   use <- TRUE
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
-  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)}, mc.cores = num_cores)
-
-  #for(i in 1:ncol(segmented_matrix)){
-  #  value = fitMeans(segmented_matrix[,i], use, sigmas[i],
-  #                   sbird_sce$corr.ploidy[i], tune_uniploid)
-  #  print(i)
-  #}
-  #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i)
-  #  fitMeans(segmented_matrix[,i], use, sigmas[i],
-  #           sbird_sce$corr.ploidy[i], tune_uniploid))
+  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = num_cores)
   cn_matrix <- do.call(cbind, cn_matrix)
 
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
