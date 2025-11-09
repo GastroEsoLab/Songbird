@@ -302,10 +302,14 @@ create_sce <- function(res){
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- sapply(res, function(x) mean(x$est_ploidy))
-  sbird_sce$observed_coverage <- sapply(res, function(x) mean(x$coverage, na.rm = T)/mean(x$overlap_genome_size))
-  sbird_sce$overlap_genome_size <- sapply(res, function(x) mean(x$overlap_genome_size))
-  sbird_sce$doublet_tag_rate <- sapply(res, function(x) mean(x$prop_doublet_tags, na.rm = T))
-  sbird_sce$est_genome_size <- sbird_sce$doublet_tag_rate/sbird_sce$observed_coverage
+  sbird_sce$coverage <- sapply(res, function(x) mean(x$Bin.Coverage/(x$end - x$start), na.rm = T))
+  avail_coverage <- rep(0, length(res))
+  for(i in 1:length(res)){
+    values <- res[[i]]$Bin.Quality
+    values <- values[is.finite(values)]
+    avail_coverage[i] <- mean(values, na.rm = T)
+  }
+  sbird_sce$est_genome_size <- avail_coverage
 
   # Bin information
   SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
@@ -347,9 +351,7 @@ create_sce_from_res <- function(res, n_cpu=NULL){
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- NULL
-  sbird_sce$observed_coverage <- NULL
-  sbird_sce$overlap_genome_size <- NULL
-  sbird_sce$doublet_tag_rate <- NULL
+  sbird_sce$coverage <- NULL
   sbird_sce$est_genome_size <- NULL
 
   # Bin information
