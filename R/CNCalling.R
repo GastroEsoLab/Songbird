@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
+    modeState <- seq(floor(expected_ploidy), round(expected_ploidy*1.5))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -170,7 +170,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
     null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
     nullScores <- c(nullScores, sum(null_res$fit[mid_means]))
     optim_rpcns[i] <- uniploid
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
+    #stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
   }
 
   fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
@@ -267,7 +267,7 @@ copyCall <- function(sbird_sce, num_cores = NULL){
 
   use <- TRUE
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
-  sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
+  sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T)) * 0.9
   cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = num_cores)
   cn_matrix <- do.call(cbind, cn_matrix)
 
@@ -302,7 +302,7 @@ create_sce <- function(res){
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- sapply(res, function(x) mean(x$est_ploidy))
-  sbird_sce$coverage <- sapply(res, function(x) mean(x$Bin.Coverage/(x$end - x$start), na.rm = T))
+  sbird_sce$coverage <- sapply(res, function(x) mean(x$Bin.Coverage, na.rm = T))
   avail_coverage <- rep(0, length(res))
   for(i in 1:length(res)){
     values <- res[[i]]$Bin.Quality

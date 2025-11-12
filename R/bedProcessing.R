@@ -311,7 +311,6 @@ calc.breadth <- function(bed){
 #' @return a data frame with observations derived from the bedpe file
 estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overlap = 10){
 
-  bin_data$use[bin_data$mappability < 90 | bin_data$bases < 90] <- FALSE
   bin_data$binName <- paste0('chr', bin_data$chromosome, '_', bin_data$start)
 
   # Load bed and get QC and Ploidy Estimation Metrics
@@ -356,10 +355,23 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overl
   bin_data <- cbind(bin_data, bed_summary[match_idx,-c('binName')])
 
   # Estimate the ploidy using the top 50th percentile bins
-  bin_data$bin_ratio <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
-  selector <- (bin_data$bin.depth > median(bin_data$bin.depth, na.rm = T)) & bin_data$use
-  bin_data$bin_ratio[!selector] <- NA
-  bin_data$bin_ratio[!is.finite(bin_data$bin_ratio)] <- NA
+  bin_selection <-  (bin_data$mappability >= 90) & (bin_data$bases >= 90) & bin_data$use
+
+
+  ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
+  selector <- (bin_data$bin.depth > median(bin_data$bin.depth, na.rm = T)) & bin_selection
+  ratios[!selector] <- NA
+  ratios[!is.finite(ratios)] <- NA
+
+  if(mean(ratios, na.rm = T) == 0 | is.na(mean(ratios, na.rm = T))){
+    warning('Mean ratio is zero, expanding selection to all usable bins')
+    selector <- bin_data$use
+
+    ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
+    ratios[!selector] <- NA
+    ratios[!is.finite(ratios)] <- NA
+  }
+  bin_data$bin_ratio <- ratios
   bin_data$est_ploidy <- 1/(1-(mean(bin_data$bin_ratio, na.rm = T)))
 
   # Get Doublet Proportion per bin & calc prop available genome
