@@ -14,7 +14,7 @@
 #'
 #' @examples
 
-process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, tag_overlap = 9, n_cpu=NULL){
+process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9, n_cpu=NULL){
   if(is.null(n_cpu)){
     n_cpu <- parallel::detectCores() - 1
   }
@@ -22,7 +22,7 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
   if(is.null(bedpes)){
     res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
   }else{
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
     #res <- lapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap))
   }
   return(create_sce(res))
@@ -39,7 +39,7 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, tag_overlap = 9){
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9){
 
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
@@ -57,6 +57,8 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
     #bin_overlap <- GenomicRanges::findOverlaps(bin_ranges, centromeres)
     reads.cor$reads[is.na(reads.cor$reads)] <- 0
     reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
+
+
     reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   }else{
     reads.cor$euchromatin <- NA
@@ -68,7 +70,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    reads.cor <- estimate.ploidy(sample = bedpe, bin_data = reads.cor, min_length = min_length, tag_overlap = tag_overlap)
+    reads.cor <- estimate.ploidy(sample = bedpe, bin_data = reads.cor, min_length = min_length, max_length = NULL, tag_overlap = tag_overlap)
   }
   return(reads.cor)
 }
@@ -111,7 +113,7 @@ convert_long <- function(reads){
 #' @examples
 load_cell <- function(bamPath, binSize, genome){
   bins <- QDNAseq::getBinAnnotations(binSize = binSize/1000, genome = genome, verbose = F)
-  bins@data$mappability <- as.numeric(bins@data$mappability)*100
+  bins@data$mappability <- as.numeric(bins@data$mappability)
   reads <- QDNAseq::binReadCounts(bins, bamfiles = bamPath, pairedEnds = T, verbose = F)
   reads <- QDNAseq::applyFilters(reads, verbose = F)
   reads <- QDNAseq::estimateCorrection(reads)
@@ -133,15 +135,39 @@ ubh_segment <- function(values){
   # Strip NAs and save their position
   out <- rep(NA, length(values))
   real_idxs <- which(!is.na(values))
-  values <- values[!is.na(values)]
-  init_sigma <- calc_madOffset(values)
+  filt_values <- values[!is.na(values)]
+  init_sigma <- calc_madOffset(filt_values)
 
   # Run UBH
-  transform <- unbalhaar::best.unbal.haar(values)
+  transform <- unbalhaar::best.unbal.haar(filt_values)
   transform.filt <- unbalhaar::hard.thresh(transform, init_sigma)
   reconstr <- unbalhaar::reconstr(transform.filt)
   out[real_idxs] <- reconstr
   out[is.na(out)] <- 0
+
+  # Identify one off bins which don't fit the data
+  bin_var <- var(out[(out > quantile(out, 0.05, na.rm = T)) & (out < quantile(out, 0.95, na.rm = T))])
+  shift_idx <- which(c(0, diff(out)) != 0)
+  singlets <- shift_idx[out[shift_idx] != out[shift_idx + 1]]
+
+  # Singlets which are far from the main distribution are likely true values, but make sure that ubh hasn't mis-estimated them
+  peak_singlets <- singlets[abs(out[singlets] - values[singlets]) > bin_var]
+  peak_singlets <- peak_singlets[!is.na(peak_singlets)]
+  out[peak_singlets] <- values[peak_singlets]
+
+  # Singlets which are within the main distribution are likely errors
+  low_singlets <- singlets[out[singlets] < mean(out, na.rm = T)]
+  high_singlets <- singlets[(out[singlets] - mean(out, na.rm = T))> bin_var]
+  singlets <- c(low_singlets, high_singlets)
+  singlets <- singlets[!is.na(singlets)]
+  singlets[singlets >= length(out)] <- length(out)-1
+  out[singlets] <- out[singlets + 1]
+
+  # remove singlet nas by carrying forward the next value
+  na_idx <- which(is.na(values))
+  next_idx <- na_idx + 1
+  next_idx[next_idx>length(values)] <- length(values)
+  out[na_idx] <- out[next_idx]
   return(out)
 }
 
@@ -309,7 +335,7 @@ calc.breadth <- function(bed){
 #' @param tag_overlap number of nucleotides that the Tn5 overlaps (default 9 nt)
 #'
 #' @return a data frame with observations derived from the bedpe file
-estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overlap = 10){
+estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_length = NULL, tag_overlap = 10){
 
   bin_data$binName <- paste0('chr', bin_data$chromosome, '_', bin_data$start)
 
@@ -321,8 +347,11 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overl
     return(out)
   }
 
-  bed <- bed[(bed$Length>min_length),]
-  bed <- count.overlaps(bed, min.size = min_length, max.size = max(bed$Length, na.rm = T))
+  if(is.null(max_length)){
+    max_length <- max(bed$Length, na.rm = T)
+  }
+  bed <- bed[(bed$Length>min_length) & (bed$Length<max_length),]
+  bed <- count.overlaps(bed, min.size = min_length, max.size = max_length)
 
   # Merge the bed data with the bin data
   binSize <- max(bin_data$end-bin_data$start) + 1
@@ -354,19 +383,24 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overl
   match_idx <- match(bin_data$binName, bed_summary$binName)
   bin_data <- cbind(bin_data, bed_summary[match_idx,-c('binName')])
 
+
+  # Get Doublet Proportion per bin & calc prop available genome
+  bin_data$Bin.Coverage <- bin_data$Bin.Coverage / (bin_data$end - bin_data$start)
+  bin_data$Bin.Prop.Doublets <- bin_data$Num.Doublets / bin_data$Bin.Reads
+  bin_data$Bin.Quality <- bin_data$Bin.Coverage/bin_data$Bin.Prop.Doublets
+
   # Estimate the ploidy using the top 50th percentile bins
   bin_selection <-  (bin_data$mappability >= 90) & (bin_data$bases >= 90) & bin_data$use
-
-
-  ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
   selector <- (bin_data$bin.depth > median(bin_data$bin.depth, na.rm = T)) & bin_selection
-  ratios[!selector] <- NA
-  ratios[!is.finite(ratios)] <- NA
 
-  if(mean(ratios, na.rm = T) == 0 | is.na(mean(ratios, na.rm = T))){
-    warning('Mean ratio is zero, expanding selection to all usable bins')
-    selector <- bin_data$use
-
+  # Resorting to this hybrid method until we can figure the math for this a bit better
+  if(mean(bin_data$Bin.Coverage, na.rm = T) < 0.075){
+    over_counts <- bin_data$Norm.Count.Over[selector]
+    upstream_counts <- bin_data$Norm.Count.Upstream[selector]
+    over_counts[!is.finite(over_counts)] <- NA
+    upstream_counts[!is.finite(upstream_counts)] <- NA
+    ratios <- mean(over_counts, na.rm = T) / mean(upstream_counts, na.rm = T)
+  }else{
     ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
     ratios[!selector] <- NA
     ratios[!is.finite(ratios)] <- NA
@@ -374,9 +408,5 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, tag_overl
   bin_data$bin_ratio <- ratios
   bin_data$est_ploidy <- 1/(1-(mean(bin_data$bin_ratio, na.rm = T)))
 
-  # Get Doublet Proportion per bin & calc prop available genome
-  bin_data$Bin.Coverage <- bin_data$Bin.Coverage / (bin_data$end - bin_data$start)
-  bin_data$Bin.Prop.Doublets <- bin_data$Num.Doublets / bin_data$Bin.Reads
-  bin_data$Bin.Quality <- bin_data$Bin.Coverage/bin_data$Bin.Prop.Doublets
   return(bin_data)
 }
