@@ -142,32 +142,31 @@ ubh_segment <- function(values){
   transform <- unbalhaar::best.unbal.haar(filt_values)
   transform.filt <- unbalhaar::hard.thresh(transform, init_sigma)
   reconstr <- unbalhaar::reconstr(transform.filt)
+  reconstr[(filt_values == 0) | (reconstr < 0)] = 0
   out[real_idxs] <- reconstr
-  out[is.na(out)] <- 0
 
-  # Identify one off bins which don't fit the data
+  # Bridge the exclusion regions by setting NAs to their next value
+  na_idx <- which(is.na(values))
+  next_idx <- na_idx + 1
+  next_idx[next_idx > length(out)] <- length(out)-1
+  out[na_idx] <- out[next_idx]
+
+  # Singlets which are far higher than the main distribution are likely true values, but make sure that ubh hasn't mis-estimated them
+  # These are probs from focal amplifications where evidence is low, but CN fidelity is important
   bin_var <- var(out[(out > quantile(out, 0.05, na.rm = T)) & (out < quantile(out, 0.95, na.rm = T))])
   shift_idx <- which(c(0, diff(out)) != 0)
   singlets <- shift_idx[out[shift_idx] != out[shift_idx + 1]]
 
-  # Singlets which are far from the main distribution are likely true values, but make sure that ubh hasn't mis-estimated them
-  peak_singlets <- singlets[abs(out[singlets] - values[singlets]) > bin_var]
+  # Make sure that high singlets actually reflect the underlying value - UBH can overestimate them
+  peak_singlets <- singlets[(abs(out[singlets] - values[singlets]) > bin_var) & (out[singlets] > quantile(out, 0.9, na.rm = T))]
   peak_singlets <- peak_singlets[!is.na(peak_singlets)]
   out[peak_singlets] <- values[peak_singlets]
 
-  # Singlets which are within the main distribution are likely errors
-  low_singlets <- singlets[out[singlets] < mean(out, na.rm = T)]
-  high_singlets <- singlets[(out[singlets] - mean(out, na.rm = T))> bin_var]
-  singlets <- c(low_singlets, high_singlets)
-  singlets <- singlets[!is.na(singlets)]
-  singlets[singlets >= length(out)] <- length(out)-1
-  out[singlets] <- out[singlets + 1]
-
-  # remove singlet nas by carrying forward the next value
-  na_idx <- which(is.na(values))
-  next_idx <- na_idx + 1
-  next_idx[next_idx>length(values)] <- length(values)
-  out[na_idx] <- out[next_idx]
+  # Singlets which are within the main distribution are likely errors, so smooth them out
+  main_singlets <- singlets[out[singlets] < quantile(out, 0.9, na.rm = T)]
+  main_singlets <- main_singlets[!is.na(main_singlets)]
+  main_singlets[main_singlets >= length(out)] <- length(out)-1
+  out[main_singlets] <- out[main_singlets + 1]
   return(out)
 }
 
