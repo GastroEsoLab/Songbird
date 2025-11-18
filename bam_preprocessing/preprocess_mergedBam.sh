@@ -56,7 +56,7 @@ samtools index -@ $NUMCORES $BAM.filtered
 echo "Filtered BAM for quality and removed duplicates"
 
 # Create list of cells to filter based on the metadata and bins and split
-Rscript /home/bkw2118/DLP-Overlap-Pipeline/EAC_Sample_Pipeline/CellIDGenerator.R $BAM.filtered $OUTDIR/CellIDList.txt
+Rscript CellIDGenerator.R $BAM.filtered $OUTDIR/CellIDList.txt
 sinto filterbarcodes -b $BAM.filtered -c  $OUTDIR/CellIDList.txt -p 36 --outdir $OUTDIR/individualBams
 echo "Created individual Bam Files"
 
@@ -67,8 +67,15 @@ sort_ind_bam() {
 	samtools markdup -r - - | \
 	samtools sort -m 10G -T ${2} -n - | \
 	bedtools bamtobed -bedpe -mate1 -i - > ${1}.bedpe
+
+    # Compress for IO when reading in with Songbird
+    bgzip ${1}.bedpe
 }
  
 # gnu parallel seems to not recognize that our server is 1 thread per cpu, so set cpu limit to half what you expect 
 env_parallel --progress --jobs $(($NUMCORES/2)) sort_ind_bam ::: $(ls $OUTDIR/individualBams/*.bam) ::: $OUTDIR
 echo "Filtered Individual BAMs"
+
+rm $BAM.filtered
+rm $BAM.filtered.bai
+echo "Cleaned up Directory"
