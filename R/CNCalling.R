@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(round(expected_ploidy*0.75), round(expected_ploidy*1.5))
+    modeState <- seq(floor(expected_ploidy), round(expected_ploidy*1.5))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -66,40 +66,49 @@ sanitize_ploidy <- function(expected_ploidy){
 #'
 #' @export
 #' @examples
-est_cn <- function(values, uniploid, sigma, return_cn = F){
-
+est_cn <- function(values, rpcn, sigma, return_cn = F){
   # Get the total number of states (+1 to account for 0 copy regions) in the dataset
   # given uniploid state & score the gaussians for each
-  numStates <- max(round(values/uniploid))+1
-  if(numStates>1000){
-    numStates <- 1000
-  }
-  scores <- matrix(nrow = numStates, ncol = length(values))
-  for(j in 1:numStates){
-    scores[j,] <- stats::dnorm(values,
-                               mean = uniploid*(j-1), # Account for 0 copy regions
-                               sd = sigma,
-                               log = T)
-  }
+  numStates <- min(1000, max(round(values/rpcn))+1) # Branchless!
 
-  # Best fitting state is the normal that best fits each state
-  states <- apply(scores, 2, which.max)
-  topScores <- sapply(1:length(states), function(j) scores[states[j],j])
+  n <- length(values)
+  best_scores <- rep(-Inf, n)
+  best_state <- integer(n)
 
-  #topScores <- sum(topScores)
-  n_cna <- sum(diff(states)!=0)
-  BIC <- -2 * sum(topScores) + log(length(states)) * n_cna
+  # Do most of the dnorm calc once
+  inv_sig2 <- -0.5/(sigma * sigma)
+  const <- -log(sigma) - 0.5*log(2*pi)
+
+  # For each bin, see if the current state is better than the best state
+  for(j in 0:(numStates-1)){
+    mu <- rpcn * j
+    s <- inv_sig2 * (values - mu)^2 + const
+
+    idx <- s > best_scores
+    best_scores[idx] <- s[idx]
+    best_state[idx] <- j
+  }
 
   if(return_cn){
-    out <- list(fit = topScores, states = states - 1)
+    out <- list(fit = best_scores, states = best_state)
     return(out)
   }else{
-    # If not outputting the just return the BIC
-    #topScores <- sum(topScores)
-    #n_cna <- sum(diff(states)!=0)
-    #BIC <- -2 * topScores + log(length(states)) * n_cna
-    return(BIC)
+    return(sum(best_scores))
   }
+}
+
+#' tune_rpcn
+#'
+#' @param values numeric vector of segmented read counts to fit
+#' @param null numeric vector of null values to compare against
+#' @param uniploid estimated ratio of reads per copy number
+#' @param sigma estimate of the noise within the bins
+#'
+#' @return negative log likelihood (for minimization by an optimizer)
+#'
+tune_rpcn <- function(values, null, uniploid, sigma){
+  score <- est_cn(values, uniploid, sigma) - est_cn(null, uniploid, sigma)
+  return(-score)
 }
 
 #' fitMeans
@@ -108,20 +117,18 @@ est_cn <- function(values, uniploid, sigma, return_cn = F){
 #' @param use logical vector indicating which bins are good to use
 #' @param sigma estimate of the noise within the bins - calculated by the residual of the reads - segmented state
 #' @param expected_ploidy noisy estimator of true cell ploidy - NA results in testing all Cell Ploidies 2-8
-#' @param tune_uniploid boolean to tune the reads per CN value to minimize the breakpoints & maximize the fit
 #'
 #' @return The final CN state for each bin
-#'
-#' @examples
-fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE){
+#' @export
+fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   # If expected ploidy is not provided, assume a range of possible ploidies
   modeState <- sanitize_ploidy(expected_ploidy)
 
   final_cn <- rep(NA, length(means))
   all_means <- means
 
-  # Values we want are labelled use, are real, and not close to zero
-  use_idx <- which(use & !is.na(means) & means > 1e-3)
+  # Values we want are labelled use, are real, and not outliers
+  use_idx <- use & !is.na(means) & (means > 1e-3) #& mid_means
   means <- means[use_idx]
   nBins <- length(means)
 
@@ -132,17 +139,19 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
     peak <- median(means, na.rm = TRUE)
   }
 
-  fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
-  stateScores <- c() # How well does the inferred states fit our strong prior that cells should be diploid?
-  fitStates <- matrix(nrow = length(modeState), ncol = nBins)
-  nullScores <- c()
+  best_states <- NULL
+  best_score <- -Inf
+  best_rpcn <- NULL
 
-  # Mid means should be the middle 90% of the means, so sort values and exclue the values that are in the top and bottom 5%
-  z_means <- scale(means, center = TRUE, scale = TRUE)
+  # Mid means should be the middle 99% of the means, so sort values and exclude the values that are in the top and bottom 1%
+  mu <- mean(means, na.rm = T)
+  z_means <- (means - mu)/sigma
   mid_means <- abs(z_means) < 3
-  null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sigma)#sd = sd(means, na.rm = T))
+  if(sum(mid_means) < 100){
+    mid_means <- rep(TRUE, length(means))
+  }
+  null_means <- rnorm(length(means), mean = mean(means[mid_means]), sd = sigma)
 
-  optim_rpcns <- c()
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
     uniploid <- peak/modeState[i]
@@ -154,33 +163,26 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA, tune_uniploid = FA
       lb <- 0.5 * uniploid
       ub <- 2 * uniploid
     }
-    best_uniploid <- stats::optim(par = uniploid, fn = est_cn, values = means, sigma = sigma,
-                           return_cn = F, method = 'Brent', lower = lb, upper = ub)
+    best_uniploid <- stats::optim(par = uniploid, fn = tune_rpcn,
+                                  values = means[mid_means], null = null_means,
+                                  sigma = sigma, method = 'Brent', lower = lb, upper = ub)
     uniploid <- best_uniploid$par
 
     # Predict CN States
     res <- est_cn(means, uniploid, sigma, return_cn = T)
     null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
-    #fitScores <- c(fitScores, -2*sum(res$fit[mid_means], na.rm = T) + log(sum(mid_means)) * sum(diff(res$states), na.rm = T))
-    fitScores <- c(fitScores, sum(res$fit[mid_means]))
-    fitStates[i,] <- res$states
-    nullScores <- c(nullScores, sum(null_res$fit[mid_means]))
-    optim_rpcns[i] <- uniploid
-    stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 3, expected_ploidy, log = T)))
+
+    score <- sum(res$fit[mid_means]) - sum(null_res$fit[mid_means])
+    if(score > best_score){
+      best_score <- score
+      best_states <- res$states
+      best_rpcn <- uniploid
+    }
   }
 
-  fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
-  nullScores <- sapply(nullScores, function(x) x-matrixStats::logSumExp(nullScores))
-  #stateScores <- sapply(stateScores, function(x) x-matrixStats::logSumExp(stateScores))
-
-  # If there is no prior expected ploidy, place no weight on the state scores
-  #bestFit <- sapply(1:length(stateScores), function(x) sum(stateScores[x], fitScores[x], na.rm = T))
-  bestFit <- which.max(fitScores - nullScores)
-  final_cn[use_idx] <- fitStates[bestFit,]
-
-  # get true uniploid & apply to the remaining bins
-  best_uniploid <- optim_rpcns[bestFit]
-  final_cn[!use_idx] <- round(all_means[!use_idx]/best_uniploid)
+  # Propogate the rpcn value to the rest of the bins
+  final_cn[use_idx] <- best_states
+  final_cn[!use_idx] <- round(all_means[!use_idx]/best_rpcn)
   return(final_cn)
 }
 
@@ -254,7 +256,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @export
 #'
 #' @examples
-copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
+copyCall <- function(sbird_sce, num_cores = NULL){
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
@@ -265,17 +267,8 @@ copyCall <- function(sbird_sce, num_cores = NULL, tune_uniploid = FALSE){
 
   use <- TRUE
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
-  sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T))
-  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i], tune_uniploid)}, mc.cores = num_cores)
-
-  #for(i in 1:ncol(segmented_matrix)){
-  #  value = fitMeans(segmented_matrix[,i], use, sigmas[i],
-  #                   sbird_sce$corr.ploidy[i], tune_uniploid)
-  #  print(i)
-  #}
-  #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i)
-  #  fitMeans(segmented_matrix[,i], use, sigmas[i],
-  #           sbird_sce$corr.ploidy[i], tune_uniploid))
+  sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T)) * 0.9
+  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = num_cores)
   cn_matrix <- do.call(cbind, cn_matrix)
 
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
@@ -309,10 +302,14 @@ create_sce <- function(res){
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- sapply(res, function(x) mean(x$est_ploidy))
-  sbird_sce$observed_coverage <- sapply(res, function(x) mean(x$coverage, na.rm = T)/mean(x$overlap_genome_size))
-  sbird_sce$overlap_genome_size <- sapply(res, function(x) mean(x$overlap_genome_size))
-  sbird_sce$doublet_tag_rate <- sapply(res, function(x) mean(x$prop_doublet_tags, na.rm = T))
-  sbird_sce$est_genome_size <- sbird_sce$doublet_tag_rate/sbird_sce$observed_coverage
+  sbird_sce$coverage <- sapply(res, function(x) mean(x$Bin.Coverage, na.rm = T))
+  avail_coverage <- rep(0, length(res))
+  for(i in 1:length(res)){
+    values <- res[[i]]$Bin.Quality
+    values <- values[is.finite(values)]
+    avail_coverage[i] <- mean(values, na.rm = T)
+  }
+  sbird_sce$est_genome_size <- avail_coverage
 
   # Bin information
   SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
@@ -354,9 +351,7 @@ create_sce_from_res <- function(res, n_cpu=NULL){
 
   # Cell information derived from just the high quality regions
   sbird_sce$est_ploidy <- NULL
-  sbird_sce$observed_coverage <- NULL
-  sbird_sce$overlap_genome_size <- NULL
-  sbird_sce$doublet_tag_rate <- NULL
+  sbird_sce$coverage <- NULL
   sbird_sce$est_genome_size <- NULL
 
   # Bin information

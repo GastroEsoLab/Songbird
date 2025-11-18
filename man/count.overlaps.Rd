@@ -4,7 +4,7 @@
 \alias{count.overlaps}
 \title{count.overlaps}
 \usage{
-count.overlaps(bed, min.size = 50, max.size = 1000, tag.overlap = 10)
+count.overlaps(bed, min.size = 50, max.size = 1000)
 }
 \arguments{
 \item{bed}{a data frame formatted as a bed file with read positions must be filtered by filter.bed}

@@ -6,17 +6,15 @@
 \usage{
 estimate.ploidy(
   sample,
-  binSize,
+  bin_data,
   genome,
   min_length = 50,
   max_length = 1000,
-  tag_overlap = 9
+  tag_overlap = 10
 )
 }
 \arguments{
 \item{sample}{path to bedpe file}
-
-\item{binSize}{binning size in nucleotides}
 
 \item{genome}{genome version to use for binning}
 
@@ -25,6 +23,8 @@ estimate.ploidy(
 \item{max_length}{maximum read length (default 1000 nt)}
 
 \item{tag_overlap}{number of nucleotides that the Tn5 overlaps (default 9 nt)}
+
+\item{binSize}{binning size in nucleotides}
 }
 \value{
 a data frame with observations derived from the bedpe file

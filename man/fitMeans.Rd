@@ -4,7 +4,7 @@
 \alias{fitMeans}
 \title{fitMeans}
 \usage{
-fitMeans(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE)
+fitMeans(means, use, sigma, expected_ploidy = NA)
 }
 \arguments{
 \item{means}{numeric vector of segmented read counts to fit}
@@ -14,8 +14,6 @@ fitMeans(means, use, sigma, expected_ploidy = NA, tune_uniploid = FALSE)
 \item{sigma}{estimate of the noise within the bins - calculated by the residual of the reads - segmented state}
 
 \item{expected_ploidy}{noisy estimator of true cell ploidy - NA results in testing all Cell Ploidies 2-8}
-
-\item{tune_uniploid}{boolean to tune the reads per CN value to minimize the breakpoints & maximize the fit}
 }
 \value{
 The final CN state for each bin

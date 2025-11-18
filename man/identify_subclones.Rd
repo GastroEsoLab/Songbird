@@ -6,8 +6,9 @@
 \usage{
 identify_subclones(
   sbird_sce,
-  assay = "segmented",
+  assay = "copy",
   k = 30,
+  res = "auto",
   method = inv_manhattan,
   min_size = 5,
   seed = 1234,

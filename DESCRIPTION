@@ -12,6 +12,7 @@ LazyData: true
 Imports: 
     circlize,
     ComplexHeatmap,
+    data.table,
     GenomicRanges,
     ggplot2,
     igraph,
