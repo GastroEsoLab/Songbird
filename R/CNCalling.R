@@ -71,7 +71,6 @@ est_cn <- function(values, rpcn, sigma, return_cn = F){
   inv_sig2 <- -0.5/(sigma * sigma)
   const <- -log(sigma) - 0.5*log(2*pi)
 
-  # Efficient log dnorm calcs
   state <- round(values/rpcn)
   mus <- state * rpcn
   score <- inv_sig2 * (values - mus)^2 + const
@@ -114,8 +113,8 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   final_cn <- rep(NA, length(means))
   all_means <- means
 
-  # Values we want are labelled use, are real, and not outliers
-  use_idx <- use & !is.na(means) & (means > 1e-3) #& mid_means
+  # Values we want are labelled use, are real, and not close to zero
+  use_idx <- which(use & !is.na(means) & means > 1e-3)
   means <- means[use_idx]
   nBins <- length(means)
 
@@ -126,19 +125,17 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
     peak <- median(means, na.rm = TRUE)
   }
 
-  best_states <- NULL
-  best_score <- -Inf
-  best_rpcn <- NULL
+  fitScores <- c() # How well does the mu fit the fixed states applied to them (dnormal around each state)
+  stateScores <- c() # How well does the inferred states fit our strong prior that cells should be diploid?
+  fitStates <- matrix(nrow = length(modeState), ncol = nBins)
+  nullScores <- c()
 
-  # Mid means should be the middle 99% of the means, so sort values and exclude the values that are in the top and bottom 1%
-  mu <- mean(means, na.rm = T)
-  z_means <- (means - mu)/sigma
+  # Mid means should be the middle 90% of the means, so sort values and exclude the values that are in the top and bottom 5%
+  z_means <- scale(means, center = TRUE, scale = TRUE)
   mid_means <- abs(z_means) < 3
-  if(sum(mid_means) < 100){
-    mid_means <- rep(TRUE, length(means))
-  }
-  null_means <- rnorm(length(means), mean = mean(means[mid_means]), sd = sigma)
+  null_means <- rnorm(length(means), mean = mean(means, na.rm = T), sd = sigma)#sd = sd(means, na.rm = T))
 
+  optim_rpcns <- c()
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
     uniploid <- peak/modeState[i]
@@ -150,26 +147,31 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
       lb <- 0.5 * uniploid
       ub <- 2 * uniploid
     }
-    best_uniploid <- stats::optim(par = uniploid, fn = tune_rpcn,
-                                  values = means[mid_means], null = null_means,
+    best_uniploid <- stats::optim(par = uniploid, fn = tune_rpcn, values = means, null = null_means,
                                   sigma = sigma, method = 'Brent', lower = lb, upper = ub)
     uniploid <- best_uniploid$par
 
     # Predict CN States
     res <- est_cn(means, uniploid, sigma, return_cn = T)
-    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
+    fitScores <- c(fitScores, sum(res$fit[mid_means]))
+    fitStates[i,] <- res$states
 
-    score <- sum(res$fit[mid_means]) - sum(null_res$fit[mid_means])
-    if(score > best_score){
-      best_score <- score
-      best_states <- res$states
-      best_rpcn <- uniploid
-    }
+    null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
+    nullScores <- c(nullScores, sum(null_res$fit[mid_means]))
+    optim_rpcns[i] <- uniploid
+    #stateScores <- c(stateScores, sum(stats::dnorm(mean = res$states[mid_means], sd = 1, expected_ploidy, log = T)))
   }
 
-  # Propogate the rpcn value to the rest of the bins
-  final_cn[use_idx] <- best_states
-  final_cn[!use_idx] <- round(all_means[!use_idx]/best_rpcn)
+  fitScores <- sapply(fitScores, function(x) x-matrixStats::logSumExp(fitScores))
+  nullScores <- sapply(nullScores, function(x) x-matrixStats::logSumExp(nullScores))
+
+  # If there is no prior expected ploidy, place no weight on the state scores
+  bestFit <- which.max(fitScores - nullScores)
+  final_cn[use_idx] <- fitStates[bestFit,]
+
+  # get true uniploid & apply to the remaining bins
+  best_uniploid <- optim_rpcns[bestFit]
+  final_cn[!use_idx] <- round(all_means[!use_idx]/best_uniploid)
   return(final_cn)
 }
 
