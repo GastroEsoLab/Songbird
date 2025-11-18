@@ -67,33 +67,20 @@ sanitize_ploidy <- function(expected_ploidy){
 #' @export
 #' @examples
 est_cn <- function(values, rpcn, sigma, return_cn = F){
-  # Get the total number of states (+1 to account for 0 copy regions) in the dataset
-  # given uniploid state & score the gaussians for each
-  numStates <- min(1000, max(round(values/rpcn))+1) # Branchless!
-
-  n <- length(values)
-  best_scores <- rep(-Inf, n)
-  best_state <- integer(n)
-
   # Do most of the dnorm calc once
   inv_sig2 <- -0.5/(sigma * sigma)
   const <- -log(sigma) - 0.5*log(2*pi)
 
-  # For each bin, see if the current state is better than the best state
-  for(j in 0:(numStates-1)){
-    mu <- rpcn * j
-    s <- inv_sig2 * (values - mu)^2 + const
-
-    idx <- s > best_scores
-    best_scores[idx] <- s[idx]
-    best_state[idx] <- j
-  }
+  # Efficient log dnorm calcs
+  state <- round(values/rpcn)
+  mus <- state * rpcn
+  score <- inv_sig2 * (values - mus)^2 + const
 
   if(return_cn){
-    out <- list(fit = best_scores, states = best_state)
+    out <- list(fit = score, states = state)
     return(out)
   }else{
-    return(sum(best_scores))
+    return(sum(score))
   }
 }
 
