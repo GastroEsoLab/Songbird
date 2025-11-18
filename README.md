@@ -46,7 +46,7 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 - [x] Add Parallel processing
 # Minimal Vignette
 
-1. Preprocess bulk bam using the script in the `bash` folder
+1. Preprocess bulk bam using the script in the `bam_preprocessing` folder
     - Script uses [Sinto](https://timoast.github.io/sinto/basic_usage.html), [GNU Parallel](https://www.gnu.org/software/parallel/), and has been tested with [bedtools 2.30.0](https://github.com/arq5x/bedtools2/releases/tag/v2.30.0), and [samtools 1.16.1](https://github.com/samtools/samtools/releases/tag/1.16) (but should be good back to samtools 1.12 when they rewrote markdup to match picard's version).
     - script will create the individualBams subdirectory inside the output folder
 ```bash
