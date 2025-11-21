@@ -255,6 +255,8 @@ copyCall <- function(sbird_sce, num_cores = NULL){
   use <- TRUE
   var_matrix <- segmented_matrix[use,] - reads_matrix[use,]
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T)) * 0.9
+  sigmas[sigmas == 0] <- min(sigmas[sigmas > 0])
+
   cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = num_cores)
   cn_matrix <- do.call(cbind, cn_matrix)
 
