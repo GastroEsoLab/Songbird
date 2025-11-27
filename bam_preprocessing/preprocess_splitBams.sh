@@ -13,11 +13,14 @@ exit_abnormal() {
 }
 
 # Get arguments from the commandline
-while getopts b:o: flag
+while getopts b:t: flag
 do
     case "${flag}" in
 	b)
 	    BAMDIR=${OPTARG}
+	    ;;
+	t)
+	    TEMPDIR=${OPTARG}
 	    ;;
 	:)
 	    echo "Error: -${OPTARG} requires an argument"
@@ -29,7 +32,7 @@ do
     esac
 done
 
-if [ $OPTIND -ne 3 ]; then
+if [ $OPTIND -ne 5 ]; then
     echo "Incorrect arguments passed";
     exit_abnormal
 fi
@@ -51,10 +54,10 @@ sort_ind_bam() {
 	bedtools bamtobed -bedpe -mate1 -i - > ${1}.bedpe
 
     # Compress for IO when reading in with Songbird
-    bgzip ${1}.bedpe
+    bgzip -f ${1}.bedpe
 }
  
 # gnu parallel seems to not recognize that our server is 1 thread per cpu, so set cpu limit to half what you expect 
-env_parallel --progress --jobs $(($NUMCORES/2)) sort_ind_bam ::: $(ls $BAMDIR*.bam) ::: $OUTDIR
+env_parallel --progress --jobs $(($NUMCORES/2)) sort_ind_bam ::: $(ls $BAMDIR*.bam) ::: $TEMPDIR
 echo "Filtered Individual BAMs"
 

@@ -243,7 +243,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @export
 #'
 #' @examples
-copyCall <- function(sbird_sce, num_cores = NULL){
+copyCall <- function(sbird_sce, n_cpu = NULL){
   if(is.null(num_cores)){
     num_cores <- parallel::detectCores() - 1
   }
