@@ -40,6 +40,9 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #'
 #' @return corrected reads
 process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9){
+  if(!genome %in% c('hg38', 'hg19', 'chm13v2')){
+    stop('Genome must be one of hg38, hg19, or chm13v2')
+  }
 
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
@@ -48,22 +51,11 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
   num_reads <- c()
 
   # Get mode CN indices
-  if(genome == 'hg38'){
-    #centromeres <- read.table('/home/bkw2118/EAC_Analysis/2025-07-03/Centromeres.bed')
-    #centromeres$V1 <- gsub('chr', '', centromeres$V1)
-    #centromeres <- GenomicRanges::GRanges(seqnames = centromeres$V1, ranges = IRanges::IRanges(start = centromeres$V2, end = centromeres$V3))
-    #bin_ranges <- GenomicRanges::GRanges(seqnames = reads.cor$chromosome, ranges = IRanges::IRanges(start = reads.cor$start, end = reads.cor$end))
-
-    #bin_overlap <- GenomicRanges::findOverlaps(bin_ranges, centromeres)
-    reads.cor$reads[is.na(reads.cor$reads)] <- 0
-    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
-
-
-    reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
-  }else{
-    reads.cor$euchromatin <- NA
-    reads.cor$ubh_tx <- ubh_segment(reads.cor$reads, reads.cor$use)
+  if(genome == 'chm13v2'){
+    reads.cor$mappability <- reads.cor$mappability * 100
   }
+  reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
+  reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   reads.cor$bam_file <- bam
   reads.cor$bedpe_file <- bedpe
 

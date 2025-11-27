@@ -244,7 +244,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #'
 #' @examples
 copyCall <- function(sbird_sce, n_cpu = NULL){
-  if(is.null(num_cores)){
+  if(is.null(n_cpu)){
     num_cores <- parallel::detectCores() - 1
   }
   # Fit means to produce the final copy matrix
