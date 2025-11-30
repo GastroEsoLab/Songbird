@@ -245,7 +245,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @examples
 copyCall <- function(sbird_sce, n_cpu = NULL){
   if(is.null(n_cpu)){
-    num_cores <- parallel::detectCores() - 1
+    n_cpu <- parallel::detectCores() - 1
   }
   # Fit means to produce the final copy matrix
   cn_matrix <- c()
@@ -257,7 +257,7 @@ copyCall <- function(sbird_sce, n_cpu = NULL){
   sigmas <- apply(var_matrix, 2, function(x) stats::sd(x, na.rm = T)) * 0.9
   sigmas[sigmas == 0] <- min(sigmas[sigmas > 0])
 
-  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = num_cores)
+  cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = n_cpu)
   cn_matrix <- do.call(cbind, cn_matrix)
 
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix

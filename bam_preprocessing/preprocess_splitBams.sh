@@ -45,8 +45,8 @@ echo "Bam Dir: $BAMDIR";
 
 sort_ind_bam() {
     samtools index ${1}
-    samtools view -q 30 -f 3 -bF 3072 ${1} | \
-	samtools sort -m 10G -T ${2} -n - | \
+    #samtools view -q 30 -f 3 -bF 3072 ${1} | \
+    samtools sort -m 10G -T ${2} -n ${1} | \
 	samtools fixmate -rm - - | \
 	samtools sort -m 10G -T ${2} - | \
 	samtools markdup -r - - | \
