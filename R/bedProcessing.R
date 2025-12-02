@@ -339,7 +339,7 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
   }
 
   if(is.null(max_length)){
-    max_length <- min(max(bed$Length, na.rm = T), quantile(bed$Length, .999)) # Strip out any extremely long reads (misaligns)
+    max_length <- min(max(bed$Length, na.rm = T), quantile(bed$Length, .99)) # Strip out any extremely long reads (misaligns)
   }
   bed <- bed[(bed$Length>min_length) & (bed$Length<max_length),]
   bed <- count.overlaps(bed, min.size = min_length, max.size = max_length)
