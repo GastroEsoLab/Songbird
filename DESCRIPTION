@@ -1,7 +1,7 @@
 Package: Songbird
 Type: Package
 Title: Wavelet Based Segmentation and Copy Number Estimation for DLP+ scDNAseq data
-Version: 0.0.1
+Version: 1.0.0
 Author: Ben Wesley
 Maintainer: Ben Wesley <bkw2118@columbia.edu>
 Description: Segments Structural Variants and Identifies
@@ -22,6 +22,7 @@ Imports:
     pbmcapply,
     QDNAseq,
     QDNAseq.hg38,
+    QDNAseq.hg19,
     RANN,
     scico,
     SingleCellExperiment,

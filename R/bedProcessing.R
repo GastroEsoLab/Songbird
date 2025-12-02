@@ -207,7 +207,7 @@ load.preprocess.bed <- function(bedpe_file, bin_data, tag_overlap = 10){
   bed <- bed[grep('(chr[0-9]+|X|Y)$', bed$Chr),] # Remove all decoy and alt contigs
 
   # Count doublets prior to trimming the Tn5 overlap
-  bed$doublet <- is.doublet(bed, min.tag.overlap = 9, max.tag.overlap = 10)
+  bed$doublet <- is.doublet(bed, min.tag.overlap = tag_overlap-1, max.tag.overlap = tag_overlap)
   bed$End <- bed$End - tag_overlap
   bed[, Length := End - Start]
   bed[, Strandedness := extractStrandedness(Name, 3)]
@@ -339,7 +339,7 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
   }
 
   if(is.null(max_length)){
-    max_length <- max(bed$Length, na.rm = T)
+    max_length <- min(max(bed$Length, na.rm = T), quantile(bed$Length, .999)) # Strip out any extremely long reads (misaligns)
   }
   bed <- bed[(bed$Length>min_length) & (bed$Length<max_length),]
   bed <- count.overlaps(bed, min.size = min_length, max.size = max_length)
