@@ -53,8 +53,8 @@ library(remotes)
 
 BiocManager::install("QDNAseq.hg19")
 remotes::install_github("asntech/QDNAseq.hg38@main")
-remotes::install_github('GastroEsoLab/QDNAseq.hs1@main")
-remotes::install_github('GastroEsoLab/Songbird@main")
+remotes::install_github("GastroEsoLab/QDNAseq.hs1@main")
+remotes::install_github("GastroEsoLab/Songbird@main")
 ```
 
 # Minimal Vignette
