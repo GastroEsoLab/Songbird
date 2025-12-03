@@ -44,6 +44,19 @@ Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
   - [x] ~~Convert bed handling to data.table~~ (read_table single core is the same speed & minimizes dependencies)
 - [x] ~~Allow recalibration of correction factor for ploidy estimation~~ No longer using any correction factor
 - [x] Add Parallel processing
+
+# Install
+Songbird largely uses packages you can get from Bioconductor & CRAN. However, the per-genome qDNASeq annotations require manual install.
+```R
+library(BiocManager)
+library(remotes)
+
+BiocManager::install("QDNAseq.hg19")
+remotes::install_github("asntech/QDNAseq.hg38@main")
+remotes::install_github('GastroEsoLab/QDNAseq.hs1@main")
+remotes::install_github('GastroEsoLab/Songbird@main")
+```
+
 # Minimal Vignette
 
 1. Preprocess bulk bam using the script in the `bam_preprocessing` folder
