@@ -82,3 +82,5 @@ sbird_sce <- identify_subclones(sbird_sce)
 
 plot_heatmap(sbird_sce, assay_name = 'copy', row_split = sbird_sce$subclone)
 ```
+
+Banner designed by [Jennifer Jones](https://github.com/jejonesu)
