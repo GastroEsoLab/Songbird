@@ -1,4 +1,4 @@
-# Songbird
+![Drawing of a Bird on a musical staff with a artistic rendition of the algorithm](https://github.com/GastroEsoLab/Songbird/blob/master/NAR-graphical%20abstractjpeg.jpg)
 Wavelet based segmentation and copy number Estimation of DLP+ scDNASeq data
 
 # To Do List
