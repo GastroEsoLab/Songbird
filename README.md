@@ -53,7 +53,7 @@ Most of the impactful parameters are in the initial segmentation and ploidy esti
 - **process.batch**: Performs initial ploidy estimation and segmentation on samples
   - bams: `(Required)` List of bam files to perform CN calling
   - genome: `(Required)` Genome version for the bams ('hg19', 'hg38', or 'hs1')
-  - gedpes: `(Default: NULL)` List of bedpe files generated from the bams. Bedpes and bams must be in the same order. Songbird can be run without bedpe files, but will not be able to use novel ploidy estimation algorithm.
+  - bedpes: `(Default: NULL)` List of bedpe files generated from the bams. Bedpes and bams must be in the same order. Songbird can be run without bedpe files, but will not be able to use novel ploidy estimation algorithm.
   - bin.size: `(Default: 500000)` Bin size in bp. Possible values depend on the available QDNAseq annotation objects, but are typically `1000, 5000, 10000, 15000, 30000, 100000, 500000, 1000000`
   - min_length: `(Default: 50)` Minimum fragment length for ploidy estimation. 50 seems to perform best for Illumina 150bp short read sequencing.
   - max_length: `(Default: NULL)` Maximum fragment length for ploidy estimation. The default (99th percentile of fragment lengths) performs well for Illumina 150bp short read sequencing, but longer fragment length tools may need to specify a smaller value to ensure that the ploidy estimation is performed on a region with similar genome accessibility
