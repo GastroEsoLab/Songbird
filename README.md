@@ -1,14 +1,11 @@
 ![Drawing of a Bird on a musical staff with a artistic rendition of the algorithm](https://github.com/GastroEsoLab/Songbird/blob/master/NAR-graphical%20abstract%20wider.jpg)
-Songbird is a WGD aware copy number caller specifically designed for _very low_ coverage single cell whole genome sequencing data. It was initially designed for DLP+ , but is extensible to any WGS method that uses Tn5 prior to PCR amplification to ligate library adaptors to genomic fragments.
+Songbird is a WGD aware copy number caller specifically designed for _very low_ coverage single cell whole genome sequencing data. It was initially designed for DLP+ , but is extensible to any WGS method that uses Tn5 prior to PCR amplification to ligate library adaptors to genomic fragments. For more details, please see our preprint on [bioRxiv](https://doi.org/10.64898/2025.12.18.693686).
 
 # Quickstart
 
 ## Install
 Songbird largely uses packages you can get from Bioconductor & CRAN. However, the per-genome qDNASeq annotations require manual install.
 ```R
-library(BiocManager)
-library(remotes)
-
 BiocManager::install("QDNAseq.hg19")
 remotes::install_github("asntech/QDNAseq.hg38@main")
 remotes::install_github("GastroEsoLab/QDNAseq.hs1@main")
@@ -101,6 +98,17 @@ Most of the impactful parameters are in the initial segmentation and ploidy esti
   - chr: `(Default: NULL)` Which chromosome to plot. NULL plots all chromosomes
   - return_plot: `(Default: FALSE)` Whether or not to return the ggplot object. Useful for plotting with `cowplot::plot_grid`
 
-# Performance
+# Tips for use
+
+## Minimum Read Depth Requirements
+Songbird is able to accurately estimate the true ploidy of a cell up to hexaploid (CN 6). Depending on the cell's ploidy, the tool requires a minimum of 0.0025x (Diploid) to 0.01x (Pentaploid) coverage per cell to get an accurate copy number estimate. For a 150bp Illumina shortread sequencer, that corresponds to 50000 (Diploid) or 200000 (Pentaploid) reads per cell. 
+
+## CN Calling on non-tumor samples
+Cells with many highly amplified, small structural variants (<10kbp in size) can cause the ploidy estimator to overestimate. We filter for this by only using the middle 80th percentile of bins by overlap counting for ploidy estimation. However, if you are analyzing a healthy cell, or a cell line you know is absent of focal amplifications, you can turn off this filter by setting the `focal_amps` parameter in the `process.batch` function to `FALSE`. 
+
+## Use with long read sequencing
+In the paper we demonstrate accurate ploidy estimation on data sequenced with PacBio long read sequencing. In order to get a proper ploidy estimate we had to limit the longest fragments considered for ploidy estimation to 8kbp. Since Songbird compares the overlapping read density to upstream read density, an extremely long upstream window can cause the algorithm to consider regions with different genome availability for ploidy estimation. This causes inaccurate estimation.
+
+
 
 Banner designed by [Jennifer Jones](https://github.com/jejonesu)
