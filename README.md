@@ -99,7 +99,7 @@ Most of the impactful parameters are in the initial segmentation and ploidy esti
   - cell: `(Required)` Cell Name to grab from the sbird single cell experiment object
   - assay: `(Default: 'copy')` Which assay to pull from
   - chr: `(Default: NULL)` Which chromosome to plot. NULL plots all chromosomes
-  - return_plot: (`Default: FALSE`) Whether or not to return the ggplot object. Useful for plotting with `cowplot::plot_grid`
+  - return_plot: `(Default: FALSE)` Whether or not to return the ggplot object. Useful for plotting with `cowplot::plot_grid`
 
 # Performance
 
