@@ -1,4 +1,4 @@
-![Drawing of a Bird on a musical staff with a artistic rendition of the algorithm](https://github.com/GastroEsoLab/Songbird/blob/master/NAR-graphical%20abstract.jpg)
+![Drawing of a Bird on a musical staff with a artistic rendition of the algorithm](https://github.com/GastroEsoLab/Songbird/blob/master/NAR-graphical%20abstract%20wider.jpg)
 Songbird is a WGD aware copy number caller specifically designed for _very low_ coverage single cell whole genome sequencing data. It was initially designed for DLP+ , but is extensible to any WGS method that uses Tn5 prior to PCR amplification to ligate library adaptors to genomic fragments.
 
 # Quickstart
