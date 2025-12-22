@@ -199,13 +199,19 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
     high_qPloidies <- est_ploidies[est_ploidies > 0 & est_ploidies < 10 & is.finite(est_ploidies) & readCounts > min_reads]
     if(length(high_qPloidies) > 10){
       sbird_sce$corr.ploidy[clone] <- mean(high_qPloidies, na.rm = T)
-      #sbird_sce$wgd[clone] <- detect_wgd(high_qPloidies, est_ploidies)
+      sbird_sce$wgd[clone] <- detect_wgd(high_qPloidies, est_ploidies)
     }else{
       warning(paste0("Not enough high quality cells to estimate ploidy for subclone: ", subclone, '\nDefaulting to a range from 2-8'))
       sbird_sce$corr.ploidy[clone] <- NA
     }
   }
-  sbird_sce$corr.ploidy[sbird_sce$wgd] <- sbird_sce$corr.ploidy[sbird_sce$wgd]*2
+  # Adjust ploidy estimates for WGD
+  for(i in 1:length(sbird_sce$corr.ploidy)){
+    wgd_status <- sbird_sce$wgd[i]
+    if(wgd_status & !is.na(wgd_status)){
+      sbird_sce$corr.ploidy[i] <- sbird_sce$corr.ploidy[i]*2
+    }
+  }
   return(sbird_sce)
 }
 

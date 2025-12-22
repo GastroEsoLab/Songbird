@@ -3,7 +3,7 @@
 
 # Print a help message
 usage() {                                 # Function: Print a help message.
-    echo "Usage: $0 [ -b BAM DIRECTORY ] " 1>&2
+    echo "Usage: $0 [ -b BAM DIRECTORY ] [-t TEMP DIRECTORY]" 1>&2
     }
 
 # Exit errors
@@ -37,7 +37,7 @@ if [ $OPTIND -ne 5 ]; then
     exit_abnormal
 fi
 
-NUMCORES=36
+NUMCORES=48
 
 echo "Bam Dir: $BAMDIR";
 

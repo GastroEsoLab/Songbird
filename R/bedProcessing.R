@@ -14,15 +14,24 @@
 #'
 #' @examples
 
-process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9, n_cpu=NULL){
+process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, n_cpu=NULL, focal_amps = TRUE){
   if(is.null(n_cpu)){
     n_cpu <- parallel::detectCores() - 1
   }
 
   if(is.null(bedpes)){
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = NULL, bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap, focal_amps = focal_amps), mc.cores = n_cpu)
   }else{
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap), mc.cores = n_cpu)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i)
+      process.cell(bams[i],
+                   genome = genome,
+                   bedpe = bedpes[i],
+                   bin.size = bin.size,
+                   min_length = min_length,
+                   max_length = max_length,
+                   tag_overlap = tag_overlap,
+                   focal_amps = focal_amps),
+      mc.cores = n_cpu)
     #res <- lapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = bedpes[i], bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap))
   }
   return(create_sce(res))
@@ -39,14 +48,13 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9){
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9, focal_amps = FALSE){
   if(!genome %in% c('hg38', 'hg19', 'chm13v2')){
     stop('Genome must be one of hg38, hg19, or chm13v2')
   }
 
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
-  # Lets try normalizing the read depth?
   reads.cor$reads <- (reads.cor$reads/sum(reads.cor$reads, na.rm = T))*10000
   num_reads <- c()
 
@@ -62,7 +70,7 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
   if(is.null(bedpe)){
     reads.cor$est_ploidy <- NA
   }else{
-    reads.cor <- estimate.ploidy(sample = bedpe, bin_data = reads.cor, min_length = min_length, max_length = NULL, tag_overlap = tag_overlap)
+    reads.cor <- estimate.ploidy(sample = bedpe, bin_data = reads.cor, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, focal_amps)
   }
   return(reads.cor)
 }
@@ -182,7 +190,7 @@ calc_madOffset <- function(values){
 #' @param max_length maximum read length (default 1000 nt)
 #'
 #' @return a data frame set up as a traditional bed file
-load.preprocess.bed <- function(bedpe_file, bin_data, tag_overlap = 10){
+load.preprocess.bed <- function(bedpe_file, bin_data, tag_overlap){
   # Load bed and get QC and Ploidy Estimation Metrics
   bedpe <- tryCatch({data.table::fread(bedpe_file, sep = '\t')},
                     error = function(e) {
@@ -252,7 +260,7 @@ extractStrandedness <- function(readName, n){
 #' @param max.tag.overlap largest length of the tagmentation read overlap (default 10 nt)
 #'
 #' @return a boolean for each read if it is a doublet, i.e. comes from 2 successful sequential tagmentation events
-is.doublet <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
+is.doublet <- function(bed, min.tag.overlap, max.tag.overlap){
   read.starts <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                         ranges = IRanges::IRanges(start = bed$Start+min.tag.overlap, end = bed$Start+max.tag.overlap))
   read.ends <- GenomicRanges::GRanges(seqnames = bed$Chr,
@@ -269,7 +277,7 @@ is.doublet <- function(bed, min.tag.overlap = 9, max.tag.overlap = 10){
 #' @param tag.overlap largest length of the tagmentation read overlap (default 10 nt)
 #'
 #' @return the bed file with the number of reads overlapping the upstream and over regions for each read
-count.overlaps <- function(bed, min.size = 50, max.size = 1000) {
+count.overlaps <- function(bed, min.size, max.size) {
   # bed <- tmp2
   upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size,
                                       end = bed$Start - min.size - 1)
@@ -326,8 +334,7 @@ calc.breadth <- function(bed){
 #' @param tag_overlap number of nucleotides that the Tn5 overlaps (default 9 nt)
 #'
 #' @return a data frame with observations derived from the bedpe file
-estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_length = NULL, tag_overlap = 10){
-
+estimate.ploidy <- function(sample, bin_data, min_length, max_length, tag_overlap, focal_amps){
   bin_data$binName <- paste0('chr', bin_data$chromosome, '_', bin_data$start)
 
   # Load bed and get QC and Ploidy Estimation Metrics
@@ -342,7 +349,10 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
     max_length <- min(max(bed$Length, na.rm = T), quantile(bed$Length, .99)) # Strip out any extremely long reads (misaligns)
   }
   bed <- bed[(bed$Length>min_length) & (bed$Length<max_length),]
+
+  # Count overlaps & strip the outliers to correct for focal amplifications
   bed <- count.overlaps(bed, min.size = min_length, max.size = max_length)
+  bed[, OlapCount := Count.Over + Count.Upstream]
 
   # Merge the bed data with the bin data
   binSize <- max(bin_data$end-bin_data$start) + 1
@@ -358,7 +368,8 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
       Norm.Count.Over     = sum(Norm.Count.Over,     na.rm = TRUE),
       Bin.Coverage        = sum(Length,              na.rm = TRUE),
       Avg.Length          = mean(Length,             na.rm = TRUE),
-      Num.Doublets        = sum(doublet,             na.rm = TRUE)
+      Num.Doublets        = sum(doublet,             na.rm = TRUE),
+      Olap.Count          = sum(OlapCount,           na.rm = TRUE)
     ),
     by = binName
   ]
@@ -374,15 +385,26 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
   match_idx <- match(bin_data$binName, bed_summary$binName)
   bin_data <- cbind(bin_data, bed_summary[match_idx,-c('binName')])
 
-
   # Get Doublet Proportion per bin & calc prop available genome
   bin_data$Bin.Coverage <- bin_data$Bin.Coverage / (bin_data$end - bin_data$start)
   bin_data$Bin.Prop.Doublets <- bin_data$Num.Doublets / bin_data$Bin.Reads
   bin_data$Bin.Quality <- bin_data$Bin.Coverage/bin_data$Bin.Prop.Doublets
 
-  # Estimate the ploidy using the top 50th percentile bins
+  # Estimate the ploidy using high quality bins
   bin_selection <-  (bin_data$mappability >= 90) & (bin_data$bases >= 90) & bin_data$use
-  selector <- (bin_data$bin.depth > median(bin_data$bin.depth, na.rm = T)) & bin_selection
+
+  # If we suspect that there are focal amplifications, we will try to strip those
+  if(focal_amps){
+    depth_selection <- (bin_data$Olap.Count > quantile(bin_data$Olap.Count, 0.1, na.rm = T)) & (bin_data$Olap.Count < quantile(bin_data$Olap.Count, 0.9, na.rm = T))
+    if(sum(depth_selection, na.rm = T) < 50){
+      depth_selection <- rep(TRUE, nrow(bin_data))
+    }
+  }else{ # Otherwise, look for bins with a higher depth than median for a more stable estimate
+    depth_selection <- (bin_data$bin.depth > median(bin_data$bin.depth, na.rm = T)) & bin_selection
+  }
+
+  selector <- depth_selection & bin_selection
+  selector[is.na(selector)] <- FALSE
 
   # Resorting to this hybrid method until we can figure the math for this a bit better
   if(mean(bin_data$Bin.Coverage, na.rm = T) < 0.075){
@@ -392,12 +414,12 @@ estimate.ploidy <- function(sample, bin_data, genome, min_length = 50, max_lengt
     upstream_counts[!is.finite(upstream_counts)] <- NA
     ratios <- mean(over_counts, na.rm = T) / mean(upstream_counts, na.rm = T)
   }else{
-    ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
-    ratios[!selector] <- NA
-    ratios[!is.finite(ratios)] <- NA
+   ratios <- bin_data$Norm.Count.Over / bin_data$Norm.Count.Upstream
+   ratios[!selector] <- NA
+   ratios[!is.finite(ratios)] <- NA
   }
+
   bin_data$bin_ratio <- ratios
   bin_data$est_ploidy <- 1/(1-(mean(bin_data$bin_ratio, na.rm = T)))
-
   return(bin_data)
 }

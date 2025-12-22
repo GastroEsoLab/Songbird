@@ -20,12 +20,13 @@ identify_subclones <- function(sbird_sce, assay = 'copy', k = 30, res = 'auto', 
                                             bin_mask = SummarizedExperiment::rowData(sbird_sce)$overlap_use,
                                             cell_mask = sbird_sce$total_reads > min_readCount)
   change_mtx[is.na(change_mtx)] <- 0  # Replace NAs with 0s
+  change_mtx <- sign(change_mtx)
   SingleCellExperiment::reducedDim(sbird_sce, paste0(assay, '_changepoint')) <- change_mtx
 
   # Make graph
   knn_graph <- RANN::nn2(change_mtx, k = k)
   knn_matrix <- knn_graph$nn.idx
-  knn_matrix[,1] <- 1:nrow(knn_matrix)  # Set the first column to be the cell index - if two cells have identical brake points, they will be overwritten
+  #knn_matrix[,1] <- 1:nrow(knn_matrix)  # Set the first column to be the cell index - if two cells have identical brake points, they will be overwritten
 
   # perform clustering
   membership <- clustering(knn_matrix = knn_matrix, feat_matrix = change_mtx, method = method, res = res)
@@ -103,9 +104,9 @@ generate_changepoint_matrix <- function(matrix, bin_mask, cell_mask){
 #' @return the inverse distance between the two changepoints
 #' @export
 inv_manhattan <- function(x, y){
-  # x and y are vectors of the same length
-  l1_dist <- sum(abs(x-y))
-  return(1/(1+l1_dist))
+ # x and y are vectors of the same length
+ l1_dist <- sum(abs(x-y))
+ return(1/(1+l1_dist))
 }
 
 #' inv_wasserstein
@@ -195,3 +196,75 @@ clustering <- function(knn_matrix, feat_matrix, method, res = 'auto'){
   membership <- leiden(graph, optim_res, return_modularity = FALSE)
   return(membership)
 }
+# clustering <- function(knn_matrix, feat_matrix, method, res = 1) {
+#
+#   n <- nrow(knn_matrix)
+#   k <- ncol(knn_matrix)
+#
+#   from <- integer(n * (k - 1))
+#   to   <- integer(n * (k - 1))
+#   wts  <- numeric(n * (k - 1))
+#
+#   idx <- 1L
+#
+#   for (i in seq_len(n)) {
+#     xi <- feat_matrix[i, ]
+#     for (j in 2:k) {
+#       nb <- knn_matrix[i, j]
+#       #d  <- sum(abs(xi - feat_matrix[nb, ]))
+#
+#       from[idx] <- i
+#       to[idx]   <- nb
+#       #wts[idx]  <- d
+#       wts[idx] <- sum(xi != feat_matrix[nb, ])
+#       idx <- idx + 1L
+#     }
+#   }
+#
+#   # Trim
+#   from <- from[1:(idx - 1)]
+#   to   <- to[1:(idx - 1)]
+#   dists <- wts[1:(idx - 1)]
+#
+#   # Robust distance scaling
+#   sigma <- stats::median(dists[dists > 0])
+#   if (!is.finite(sigma) || sigma <= 0)
+#     sigma <- 1
+#
+#   weights <- exp(-dists / sigma)
+#
+#   edges <- data.frame(
+#     from = from,
+#     to   = to,
+#     weight = weights
+#   )
+#
+#   # Remove self-loops only
+#   edges <- edges[edges$from != edges$to, ]
+#
+#   # Build graph WITH ALL VERTICES
+#   graph <- igraph::graph_from_data_frame(
+#     edges,
+#     directed = FALSE,
+#     vertices = data.frame(name = seq_len(n))
+#   )
+#
+#   if(res == 'auto'){
+#     # Automatically determine the resolution parameter based on modularity
+#     optim_res <- stats::optim(par = 1, fn = leiden, graph = graph, return_modularity = TRUE, method = 'L-BFGS-B', lower = 0.0001, upper = 10)
+#     optim_res <- optim_res$par
+#     message(paste0('Optimized resolution parameter: ', round(optim_res, 3)))
+#   }
+#   else {
+#     optim_res <- res
+#   }
+#
+#   membership <- igraph::cluster_leiden(
+#     graph,
+#     resolution = optim_res,
+#     objective_function = "modularity",
+#     n_iterations = 5
+#   )$membership
+#
+#   membership
+# }
