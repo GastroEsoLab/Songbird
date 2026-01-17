@@ -20,7 +20,15 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
   }
 
   if(is.null(bedpes)){
-    res <- pbmcapply::pbmclapply(1:length(bams), function(i) process.cell(bams[i], genome = genome, bedpe = NULL, bin.size = bin.size, min_length = min_length, tag_overlap = tag_overlap, focal_amps = focal_amps), mc.cores = n_cpu)
+    res <- pbmcapply::pbmclapply(1:length(bams), function(i)
+      process.cell(bams[i],
+                   genome = genome,
+                   bedpe = NULL,
+                   bin.size = bin.size,
+                   min_length = min_length,
+                   tag_overlap = tag_overlap,
+                   focal_amps = focal_amps),
+      mc.cores = n_cpu)
   }else{
     res <- pbmcapply::pbmclapply(1:length(bams), function(i)
       process.cell(bams[i],
@@ -48,9 +56,12 @@ process.batch <- function(bams, genome = 'hg38', bedpes = NULL, bin.size = 50000
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 9, focal_amps = FALSE){
-  if(!genome %in% c('hg38', 'hg19', 'chm13v2')){
-    stop('Genome must be one of hg38, hg19, or chm13v2')
+process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE){
+  #if(!genome %in% c('hg38', 'hg19', 'chm13v2')){
+  #  stop('Genome must be one of hg38, hg19, or chm13v2')
+  #}
+  if(!genome %in% c('hg38', 'hg19', 'hs1')){
+    stop('Genome must be one of hg38, hg19, or hs1')
   }
 
   reads <- load_cell(bam, binSize = bin.size, genome)
@@ -59,9 +70,9 @@ process.cell <- function(bam, genome, bedpe = NULL, bin.size = 500000, min_lengt
   num_reads <- c()
 
   # Get mode CN indices
-  if(genome == 'chm13v2'){
-    reads.cor$mappability <- reads.cor$mappability * 100
-  }
+  #if(genome == 'chm13v2'){
+  #  reads.cor$mappability <- reads.cor$mappability * 100
+  #}
   reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
   reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   reads.cor$bam_file <- bam

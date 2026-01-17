@@ -41,12 +41,10 @@ NUMCORES=48
 
 echo "Bam Dir: $BAMDIR";
 
-# Generate GFF file and spit out cell IDs
-
 sort_ind_bam() {
     samtools index ${1}
-    #samtools view -q 30 -f 3 -bF 3072 ${1} | \
-    samtools sort -m 10G -T ${2} -n ${1} | \
+    samtools view -h -q 30 -f 3 -bF 3072 ${1} | \
+  samtools sort -m 10G -T ${2} -n - | \
 	samtools fixmate -rm - - | \
 	samtools sort -m 10G -T ${2} - | \
 	samtools markdup -r - - | \
@@ -56,8 +54,10 @@ sort_ind_bam() {
     # Compress for IO when reading in with Songbird
     bgzip -f ${1}.bedpe
 }
- 
-# gnu parallel seems to not recognize that our server is 1 thread per cpu, so set cpu limit to half what you expect 
+
+# gnu parallel seems to not recognize that our server is 1 thread per cpu, so set cpu limit to half what you expect
 env_parallel --progress --jobs $(($NUMCORES/2)) sort_ind_bam ::: $(ls $BAMDIR*.bam) ::: $TEMPDIR
 echo "Filtered Individual BAMs"
 
+rm ${BAMDIR}*.bam.bai
+echo "Removed BAM Index Files"
