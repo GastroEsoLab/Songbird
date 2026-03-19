@@ -4,16 +4,16 @@
 \alias{est_cn}
 \title{est_cn}
 \usage{
-est_cn(values, uniploid, sigma, return_cn = F)
+est_cn(values, rpcn, sigma, return_cn = F)
 }
 \arguments{
 \item{values}{numeric vector of segmented read counts to fit}
 
-\item{uniploid}{estimated ratio of reads per copy number}
-
 \item{sigma}{estimate of the noise within the bins}
 
 \item{return_cn}{boolean to return the final CN + LogProb, or to return the BIC}
+
+\item{uniploid}{estimated ratio of reads per copy number}
 }
 \value{
 either a list containing the CN and logProb of fit, or the BIC for tuning

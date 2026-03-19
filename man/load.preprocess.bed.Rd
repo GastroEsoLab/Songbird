@@ -4,7 +4,7 @@
 \alias{load.preprocess.bed}
 \title{load.preprocess.bed}
 \usage{
-load.preprocess.bed(bedpe_file, bin_data, tag_overlap = 10)
+load.preprocess.bed(bedpe_file, bin_data, tag_overlap)
 }
 \arguments{
 \item{bedpe_file}{path to the bedpe file produced by the preprocessing pipeline}

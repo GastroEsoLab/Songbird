@@ -4,7 +4,7 @@
 \alias{copyCall}
 \title{copyCall}
 \usage{
-copyCall(sbird_sce, num_cores = NULL)
+copyCall(sbird_sce, n_cpu = NULL)
 }
 \arguments{
 \item{sbird_sce}{the songbird single cell experiment object - requires that 'segmented' and 'reads' assays are present}

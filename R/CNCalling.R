@@ -224,6 +224,9 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
 #'
 #' @examples
 detect_wgd <- function(high_qPloidies, all_ploidies){
+  if (length(unique(high_qPloidies)) < 2) {
+    return(rep(FALSE, length(all_ploidies)))
+  }
   wgd_clustering <- stats::kmeans(high_qPloidies, centers = 2)
   wgd_index <- which.max(wgd_clustering$centers)
 
@@ -251,7 +254,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @examples
 copyCall <- function(sbird_sce, n_cpu = NULL){
   if(is.null(n_cpu)){
-    n_cpu <- parallel::detectCores() - 1
+    n_cpu <- max(1L, parallel::detectCores() - 1L)
   }
   # Fit means to produce the final copy matrix
   cn_matrix <- c()
@@ -306,15 +309,31 @@ create_sce <- function(res){
   }
   sbird_sce$est_genome_size <- avail_coverage
 
-  # Bin information
-  SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
-  SummarizedExperiment::rowData(sbird_sce)$start <- res[[1]]$start
-  SummarizedExperiment::rowData(sbird_sce)$end <- res[[1]]$end
-  SummarizedExperiment::rowData(sbird_sce)$bin_name <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
+  # Bin information - constant across cells, taken from first cell
+  SummarizedExperiment::rowData(sbird_sce)$chr         <- res[[1]]$chromosome
+  SummarizedExperiment::rowData(sbird_sce)$start       <- res[[1]]$start
+  SummarizedExperiment::rowData(sbird_sce)$end         <- res[[1]]$end
+  SummarizedExperiment::rowData(sbird_sce)$bin_name    <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
   SummarizedExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
-  SummarizedExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
+  SummarizedExperiment::rowData(sbird_sce)$gc          <- res[[1]]$gc
   SummarizedExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
   SummarizedExperiment::rowData(sbird_sce)$euchromatin <- res[[1]]$euchromatin
+  # bases and use come from QDNAseq bin annotations - same for all cells
+  SummarizedExperiment::rowData(sbird_sce)$bases       <- res[[1]]$bases
+  SummarizedExperiment::rowData(sbird_sce)$use         <- res[[1]]$use
+
+  # Per-cell overlap counts stored as assay matrices (bins x cells) so
+  # ploidy_correction_hmm can access the correct values per cell.
+  # Only present when bedpe files were provided; silently skipped otherwise.
+  overlap_cols <- c('Count.Over', 'Count.Upstream', 'Total.Window.Size', 'Bin.Reads')
+  has_overlap  <- all(overlap_cols %in% colnames(res[[1]]))
+  if (has_overlap) {
+    for (col in overlap_cols) {
+      mat <- reads_to_matrix(res, col)
+      SummarizedExperiment::assay(sbird_sce, col, withDimnames = FALSE) <- t(mat)
+    }
+  }
+
   return(sbird_sce)
 }
 
@@ -328,7 +347,7 @@ create_sce <- function(res){
 #' @examples
 create_sce_from_res <- function(res, n_cpu=NULL){
   if(is.null(n_cpu)){
-    n_cpu <- parallel::detectCores() - 1
+    n_cpu <- max(1L, parallel::detectCores() - 1L)
   }
 
   reads <- reads_to_matrix(res, 'reads')
@@ -350,13 +369,18 @@ create_sce_from_res <- function(res, n_cpu=NULL){
   sbird_sce$est_genome_size <- NULL
 
   # Bin information
-  SummarizedExperiment::rowData(sbird_sce)$chr <- res[[1]]$chromosome
-  SummarizedExperiment::rowData(sbird_sce)$start <- res[[1]]$start
-  SummarizedExperiment::rowData(sbird_sce)$end <- res[[1]]$end
-  SummarizedExperiment::rowData(sbird_sce)$bin_name <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
+  SummarizedExperiment::rowData(sbird_sce)$chr         <- res[[1]]$chromosome
+  SummarizedExperiment::rowData(sbird_sce)$start       <- res[[1]]$start
+  SummarizedExperiment::rowData(sbird_sce)$end         <- res[[1]]$end
+  SummarizedExperiment::rowData(sbird_sce)$bin_name    <- paste0(res[[1]]$chromosome, ':', res[[1]]$start, '-', res[[1]]$end)
   SummarizedExperiment::rowData(sbird_sce)$overlap_use <- res[[1]]$use
-  SummarizedExperiment::rowData(sbird_sce)$gc <- res[[1]]$gc
+  SummarizedExperiment::rowData(sbird_sce)$gc          <- res[[1]]$gc
   SummarizedExperiment::rowData(sbird_sce)$mappability <- res[[1]]$mappability
+  SummarizedExperiment::rowData(sbird_sce)$bases       <- res[[1]]$bases
+  SummarizedExperiment::rowData(sbird_sce)$use         <- res[[1]]$use
+  # Note: overlap assays (Count.Over, Norm.Count.Upstream, Bin.Reads) are not
+  # available without bedpe files — ploidy_correction_hmm cannot be used with
+  # SCEs built by this function. Use ploidy_correction() instead.
   return(sbird_sce)
 }
 

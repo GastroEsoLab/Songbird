@@ -4,7 +4,7 @@
 \alias{ubh_segment}
 \title{ubh_segment}
 \usage{
-ubh_segment(values, use)
+ubh_segment(values)
 }
 \arguments{
 \item{values}{GC + Map corrected reads per bin}

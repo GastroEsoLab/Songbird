@@ -5,14 +5,18 @@
 \title{process.batch}
 \usage{
 process.batch(
-  bams,
+  bams = NULL,
   genome = "hg38",
   bedpes = NULL,
   bin.size = 5e+05,
   min_length = 50,
-  max_length = 1000,
-  tag_overlap = 9,
-  n_cpu = NULL
+  max_length = NULL,
+  tag_overlap = 10,
+  n_cpu = NULL,
+  focal_amps = TRUE,
+  ploidy_method = c("ratio", "hmm"),
+  background_method = c("original", "symmetric"),
+  symmetric_x = 25000
 )
 }
 \arguments{
@@ -31,6 +35,29 @@ process.batch(
 \item{tag_overlap}{size of the read overlap created by a tagmentation event}
 
 \item{n_cpu}{number of CPUs to use for parallel processing, default is NULL which uses all but one CPU}
+
+\item{focal_amps}{whether to filter focal amplifications during ploidy estimation}
+
+\item{ploidy_method}{character — ploidy estimation method to use downstream.
+\code{"ratio"} (default) uses the original global ratio average via
+\code{\link{ploidy_correction}}.
+\code{"hmm"} uses the Poisson-HMM segmentation via
+\code{\link{ploidy_correction_hmm}}.
+This argument is stored in \code{metadata(sce)$ploidy_method} so that
+downstream functions can dispatch correctly.}
+
+\item{background_method}{character — background window design for overlap
+counting. \code{"original"} (default) uses the narrow upstream window
+\code{[Start - max_length, Start - min_length - 1]}, preserving the
+original behaviour exactly.
+\code{"symmetric"} uses a window extending \code{symmetric_x} bp on both
+sides of each fragment start, with the doublet zone excised, reducing
+sensitivity to local accessibility biases.
+Only relevant when bedpe files are provided.}
+
+\item{symmetric_x}{integer — half-width (bp) of the symmetric background
+window. Only used when \code{background_method = "symmetric"}.
+Default 25000.}
 }
 \value{
 songbird object

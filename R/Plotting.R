@@ -37,7 +37,7 @@ plot_heatmap <- function(sce, assay_name, cell_attribs = NULL, row_split = NULL,
                                             "21\n", "\n22", "X\n", "\nY" ))
 
   # Set colormap
-  if(grepl('copy', assay_name)){
+  if(grepl('copy', assay_name) || assay_name == 'hmm_cn'){
     colScale <- circlize::colorRamp2(breaks = 0:11,
                                      colors = c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
                                                 '#d6804f', '#b3402e', '#821010', '#6a0936',
@@ -217,3 +217,228 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
   else{plot(p)}
 }
 
+
+#' plot_overlap_fit
+#'
+#' Plots observed overlap read counts against expected counts derived from the
+#' background (upstream) density, for a single cell.  This is the key
+#' diagnostic for the Poisson doublet-based ploidy model: under a pure
+#' diploid genome the points should fall on the line
+#' \code{observed = ratio_diploid x expected}, where
+#' \code{ratio_diploid = 0.5}.  Aneuploid regions scatter above or below
+#' according to their copy number state.
+#'
+#' When the SCE contains the \code{"hmm_cn"} assay (i.e. after
+#' \code{\link{ploidy_correction_hmm}} has been run), each bin is coloured by
+#' its decoded CN state and reference lines are drawn for every CN state
+#' present in the cell.  Without \code{"hmm_cn"}, a single diploid reference
+#' line is shown.
+#'
+#' Expected count per bin is computed as:
+#' \deqn{\hat{y}_b = \text{ratio}_k \times
+#'   \frac{\text{Count.Upstream}_b}{\text{Total.Window.Size}_b} \times
+#'   \text{min\_length} \times \text{Bin.Reads}_b}
+#' where \eqn{\text{ratio}_k = (k-1)/k} for CN state \eqn{k}.
+#'
+#' @param sbird_sce  SingleCellExperiment — songbird object after
+#'   \code{\link{process.batch}} (with bedpe files).  Requires
+#'   assays \code{Count.Over}, \code{Count.Upstream}, \code{Total.Window.Size},
+#'   and \code{Bin.Reads}.
+#' @param cell       character — cell name (column name in the assay matrices).
+#' @param min_length integer — overlap window size in bp.  Should match the
+#'   \code{min_length} used in \code{\link{process.batch}}.  If
+#'   \code{NULL} (default), read from \code{metadata(sbird_sce)$min_length};
+#'   falls back to 50 if not found.
+#' @param cn_states  integer vector — CN states for which reference lines are
+#'   drawn.  Default \code{1:6}.
+#' @param alpha      numeric — point transparency.  Default 0.4.
+#' @param return_plot logical — if \code{TRUE} returns the ggplot object
+#'   instead of printing.  Default \code{FALSE}.
+#'
+#' @return A ggplot object (if \code{return_plot = TRUE}) or \code{NULL}
+#'   (printed as side-effect).
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Before HMM — single diploid reference line
+#' plot_overlap_fit(sbird_sce, cell = 'cell_001')
+#'
+#' # After HMM — bins coloured by CN state, one line per state
+#' sbird_sce <- ploidy_correction_hmm(sbird_sce)
+#' plot_overlap_fit(sbird_sce, cell = 'cell_001')
+#' }
+plot_overlap_fit <- function(sbird_sce, cell,
+                             min_length  = NULL,
+                             cn_states   = 1:6,
+                             alpha       = 0.4,
+                             return_plot = FALSE) {
+
+  # ---- resolve min_length --------------------------------------------------
+  if (is.null(min_length)) {
+    min_length <- S4Vectors::metadata(sbird_sce)$min_length
+    if (is.null(min_length)) {
+      message("min_length not found in metadata, defaulting to 50")
+      min_length <- 50L
+    }
+  }
+
+  # ---- check required assays -----------------------------------------------
+  assay_names  <- SummarizedExperiment::assayNames(sbird_sce)
+  overlap_cols <- c('Count.Over', 'Count.Upstream', 'Total.Window.Size', 'Bin.Reads')
+  missing      <- setdiff(overlap_cols, assay_names)
+  if (length(missing) > 0) {
+    stop(
+      "plot_overlap_fit requires assays: ",
+      paste(missing, collapse = ', '), "\n",
+      "These are present only when process.batch was run with bedpe files."
+    )
+  }
+
+  rd        <- as.data.frame(SummarizedExperiment::rowData(sbird_sce))
+  all_cells <- colnames(SummarizedExperiment::assay(sbird_sce, 'reads'))
+
+  # ---- check cell exists ---------------------------------------------------
+  if (!cell %in% all_cells) {
+    stop("Cell '", cell, "' not found. Available cells:\n",
+         paste(head(all_cells, 10), collapse = ', '),
+         if (length(all_cells) > 10) paste0(' ... (', length(all_cells), ' total)') else '')
+  }
+
+  # ---- extract per-cell overlap values from assay matrices -----------------
+  cell_idx   <- which(all_cells == cell)
+  count_over  <- SummarizedExperiment::assay(sbird_sce, 'Count.Over')[, cell_idx]
+  count_up    <- SummarizedExperiment::assay(sbird_sce, 'Count.Upstream')[, cell_idx]
+  win_size    <- SummarizedExperiment::assay(sbird_sce, 'Total.Window.Size')[, cell_idx]
+  bin_reads   <- SummarizedExperiment::assay(sbird_sce, 'Bin.Reads')[, cell_idx]
+
+  # ---- build per-bin data frame --------------------------------------------
+  dat <- data.frame(
+    bin_name      = rd$bin_name,
+    chr           = rd$chr,
+    Count.Over    = count_over,
+    Count.Up      = count_up,
+    Win.Size      = win_size,
+    Bin.Reads     = bin_reads,
+    use           = rd$overlap_use,
+    stringsAsFactors = FALSE
+  )
+
+  # Expected count: background density x overlap window x reads in bin
+  # Expected = (Count.Upstream / Total.Window.Size) x min_length
+  # Uses raw background counts and mean window size to correctly scale across
+  # different background window designs (original narrow vs wide symmetric).
+  dat$expected <- (dat$Count.Up / dat$Win.Size) * min_length * dat$Bin.Reads
+
+  # ---- CN state colouring --------------------------------------------------
+  has_hmm <- 'hmm_cn' %in% SummarizedExperiment::assayNames(sbird_sce)
+
+  if (has_hmm) {
+    hmm_mat    <- SummarizedExperiment::assay(sbird_sce, 'hmm_cn')
+    cell_cn    <- hmm_mat[, cell]
+    dat$cn     <- factor(cell_cn, levels = sort(unique(stats::na.omit(cell_cn))))
+    cn_present <- sort(unique(stats::na.omit(cell_cn)))
+  } else {
+    dat$cn     <- factor(2L)
+    cn_present <- 2L
+  }
+
+  # ---- remove bins with no usable data ------------------------------------
+  dat <- dat[!is.na(dat$expected) & dat$expected > 0 &
+             !is.na(dat$Count.Over) & !is.na(dat$Win.Size) &
+             dat$Win.Size > 0 & dat$use, ]
+
+  if (nrow(dat) == 0) {
+    stop("No usable bins found for cell '", cell,
+         "' after applying quality filters.")
+  }
+
+  # ---- reference lines: one per CN state -----------------------------------
+  # Slope = ratio_k = (k-1)/k.  Line passes through origin.
+  ref_lines <- data.frame(
+    cn    = factor(cn_present, levels = levels(dat$cn)),
+    slope = (cn_present - 1) / cn_present
+  )
+
+  # ---- observed mean slope per CN state ------------------------------------
+  # Fit Count.Over ~ expected through the origin (no intercept) per CN state.
+  # slope = sum(observed) / sum(expected) — the MLE for a Poisson rate ratio,
+  # equivalent to lm(y ~ 0 + x) but without the normality assumption.
+  # This gives the actual inferred doublet ratio for each state, which should
+  # be close to ratio_k = (k-1)/k if the model fits well.
+  obs_slopes <- do.call(rbind, lapply(cn_present, function(k) {
+    idx <- !is.na(dat$cn) & as.integer(as.character(dat$cn)) == k
+    if (sum(idx) < 3) return(NULL)
+    obs_slope <- sum(dat$Count.Over[idx], na.rm = TRUE) /
+                 sum(dat$expected[idx],   na.rm = TRUE)
+    data.frame(
+      cn         = factor(k, levels = levels(dat$cn)),
+      obs_slope  = obs_slope,
+      label      = sprintf('CN%d: obs=%.3f  th=%.3f', k, obs_slope, (k-1)/k)
+    )
+  }))
+
+  # CN colour palette — matches the copy number palette used in plot_cell
+  cn_palette <- c(
+    '0'  = '#496bab', '1' = '#9fbdd7', '2' = '#c1c1c1',
+    '3'  = '#e9c47e', '4' = '#d6804f', '5' = '#b3402e',
+    '6'  = '#821010', '7' = '#6a0936', '8' = '#ab1964',
+    '9'  = '#b6519f', '10'= '#ad80b9', '11'= '#c2a9d1'
+  )
+  used_palette <- cn_palette[as.character(sort(unique(as.integer(
+    as.character(dat$cn)
+  ))))]
+
+  # ---- plot ----------------------------------------------------------------
+  # Clip extreme outliers for display (keep 99th percentile)
+  x_max <- stats::quantile(dat$expected,    0.99, na.rm = TRUE)
+  y_max <- stats::quantile(dat$Count.Over,  0.99, na.rm = TRUE)
+
+  p <- ggplot2::ggplot(dat,
+         ggplot2::aes(x = expected, y = Count.Over, colour = cn)) +
+    ggplot2::geom_point(size = 0.8, alpha = alpha) +
+    # Theoretical slope (dashed)
+    ggplot2::geom_abline(
+      data    = ref_lines,
+      mapping = ggplot2::aes(slope = slope, intercept = 0, colour = cn),
+      linewidth = 0.7, linetype = 'dashed', show.legend = FALSE
+    ) +
+    # Observed mean slope (solid) — passes through origin, fitted per CN state
+    ggplot2::geom_abline(
+      data    = obs_slopes,
+      mapping = ggplot2::aes(slope = obs_slope, intercept = 0, colour = cn),
+      linewidth = 0.9, linetype = 'solid', show.legend = FALSE
+    ) +
+    # Annotation: observed vs theoretical slope per CN state
+    ggplot2::annotate(
+      'text',
+      x     = x_max * 0.02,
+      y     = seq(y_max * 0.98, by = -y_max * 0.07, length.out = nrow(obs_slopes)),
+      label = obs_slopes$label,
+      hjust = 0, vjust = 1, size = 3, colour = 'grey30'
+    ) +
+    ggplot2::scale_colour_manual(
+      name   = 'CN state',
+      values = used_palette,
+      drop   = TRUE
+    ) +
+    ggplot2::coord_cartesian(
+      xlim = c(0, x_max),
+      ylim = c(0, y_max)
+    ) +
+    ggplot2::labs(
+      x     = 'Expected overlap count  (Count.Upstream / window size \u00d7 min_length)',
+      y     = 'Observed overlap count',
+      title = paste0('Overlap fit  \u2014  ', cell),
+      subtitle = if (has_hmm)
+        'Dashed = theoretical slope (k-1)/k; solid = observed mean slope; annotations show obs vs theoretical'
+      else
+        'Dashed = diploid reference (0.5); solid = observed slope; run ploidy_correction_hmm() for per-state view'
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      plot.subtitle = ggplot2::element_text(size = 9, colour = 'grey40')
+    )
+
+  if (return_plot) return(p) else plot(p)
+}

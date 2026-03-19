@@ -2,9 +2,9 @@
 % Please edit documentation in R/bedProcessing.R
 \name{is.doublet}
 \alias{is.doublet}
-\title{count.doublets}
+\title{is.doublet}
 \usage{
-is.doublet(bed, min.tag.overlap = 9, max.tag.overlap = 10)
+is.doublet(bed, min.tag.overlap, max.tag.overlap)
 }
 \arguments{
 \item{bed}{a data frame formatted as a bed file with read positions must be filtered by filter.bed}
@@ -17,5 +17,5 @@ is.doublet(bed, min.tag.overlap = 9, max.tag.overlap = 10)
 a boolean for each read if it is a doublet, i.e. comes from 2 successful sequential tagmentation events
 }
 \description{
-count.doublets
+is.doublet
 }

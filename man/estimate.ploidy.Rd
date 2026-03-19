@@ -5,24 +5,35 @@
 \title{estimate.ploidy}
 \usage{
 estimate.ploidy(
-  sample,
+  bedpe,
   bin_data,
-  genome,
-  min_length = 50,
-  max_length = 1000,
-  tag_overlap = 10
+  min_length,
+  max_length,
+  tag_overlap,
+  focal_amps,
+  genome = NULL,
+  background_method = "original",
+  symmetric_x = 25000
 )
 }
 \arguments{
-\item{sample}{path to bedpe file}
-
-\item{genome}{genome version to use for binning}
-
 \item{min_length}{minimum read length (default 50 nt)}
 
 \item{max_length}{maximum read length (default 1000 nt)}
 
 \item{tag_overlap}{number of nucleotides that the Tn5 overlaps (default 9 nt)}
+
+\item{genome}{genome version to use for binning}
+
+\item{background_method}{character — background window method passed to
+\code{\link{count.overlaps}}. \code{"original"} (default) or
+\code{"symmetric"}. See \code{\link{count.overlaps}} for details.}
+
+\item{symmetric_x}{integer — half-width (bp) of the symmetric background
+window. Only used when \code{background_method = "symmetric"}.
+Default 25000.}
+
+\item{sample}{path to bedpe file}
 
 \item{binSize}{binning size in nucleotides}
 }

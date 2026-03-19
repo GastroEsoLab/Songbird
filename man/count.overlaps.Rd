@@ -4,20 +4,51 @@
 \alias{count.overlaps}
 \title{count.overlaps}
 \usage{
-count.overlaps(bed, min.size = 50, max.size = 1000)
+count.overlaps(
+  bed,
+  min.size,
+  max.size,
+  background_method = c("original", "symmetric"),
+  symmetric_x = 25000
+)
 }
 \arguments{
-\item{bed}{a data frame formatted as a bed file with read positions must be filtered by filter.bed}
+\item{bed}{data.table — fragment-level data, output of
+\code{load.preprocess.bed}.}
 
-\item{min.size}{minimum read length (default 50 nt)}
+\item{min.size}{integer — minimum fragment length (bp).}
 
-\item{max.size}{maximum read length (default 1000 nt)}
+\item{max.size}{integer — maximum fragment length (bp).}
 
-\item{tag.overlap}{largest length of the tagmentation read overlap (default 10 nt)}
+\item{background_method}{character — \code{"original"} (default) or
+\code{"symmetric"}.}
+
+\item{symmetric_x}{integer — half-width of the symmetric window in bp.
+Only used when \code{background_method = "symmetric"}. Default 25000.}
 }
 \value{
-the bed file with the number of reads overlapping the upstream and over regions for each read
+The input \code{bed} data.table with four new columns appended:
+  \code{Count.Upstream}, \code{Count.Over},
+  \code{Norm.Count.Upstream} (per-bp density), \code{Norm.Count.Over}.
 }
 \description{
-count.overlaps
+Counts reads falling in the background (upstream) and doublet (overlap)
+windows for each fragment.
+}
+\details{
+Two background window designs are supported:
+
+\describe{
+  \item{\code{"original"}}{The window immediately upstream of each fragment:
+    \code{[Start - max.size, Start - min.size - 1]}.
+    Width = \code{max.size - min.size - 1} bp.
+    Default. Fully backward-compatible.}
+  \item{\code{"symmetric"}}{A window centred on \code{Start} that extends
+    \code{symmetric_x} bp in both directions, with the doublet zone
+    \code{[Start - min.size, Start - 1]} excised.  This produces two arms:
+    left = \code{[Start - symmetric_x, Start - min.size - 1]} and
+    right = \code{[Start, Start + symmetric_x]}.
+    Width = combined arm widths (varies per fragment near chromosome ends).
+    Avoids local accessibility biases in the narrow upstream window.}
+}
 }
