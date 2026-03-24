@@ -14,7 +14,9 @@ process.bam.bedpe(
   tag_overlap = 10,
   focal_amps = TRUE,
   background_method = "original",
-  symmetric_x = 25000
+  symmetric_x = 25000,
+  background_exclusion = NULL,
+  near_start_exclusion = 0L
 )
 }
 \arguments{

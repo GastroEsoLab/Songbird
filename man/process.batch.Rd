@@ -16,7 +16,9 @@ process.batch(
   focal_amps = TRUE,
   ploidy_method = c("ratio", "hmm"),
   background_method = c("original", "symmetric"),
-  symmetric_x = 25000
+  symmetric_x = 25000,
+  background_exclusion = NULL,
+  near_start_exclusion = 0L
 )
 }
 \arguments{

@@ -18,7 +18,9 @@ hmm_ploidy(
 Must contain: Count.Over, Count.Upstream, Total.Window.Size,
 reads, ubh_tx, chromosome, start, end, use, mappability, bases.}
 
-\item{min_length}{integer — overlap window size in bp (tag_overlap from process.batch).}
+\item{min_length}{integer — effective overlap window size in bp, equal to
+\code{min_length - tag_overlap}. Read automatically from
+\code{metadata(sbird_sce)$overlap_window_size} by \code{ploidy_correction_hmm}.}
 
 \item{cn_states}{integer vector — CN states to model. Default 1:6.}
 

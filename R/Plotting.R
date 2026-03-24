@@ -181,19 +181,22 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
   dat$adj_reads <- dat$reads*deviation
 
   # Set plotting max based on outliers
-  if(assay == 'copy'){
-    ymax <- max(10,max(dat$copy[!dat$outlier], na.rm = T))
+  if(assay == 'copy' || assay == 'hmm_cn'){
+    ymax <- max(10, max(dat$copy[!dat$outlier], na.rm = T))
 
     colors <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
                 '#d6804f', '#b3402e', '#821010', '#6a0936',
                 '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
     names(colors) <- c(0:11)
-    dat$copy[dat$copy>11] <- 11
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) + ggplot2::geom_point(size = 0.3) +
+    dat$copy[dat$copy > 11] <- 11
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads, color = as.factor(copy))) +
+      ggplot2::geom_point(size = 0.3) +
       ggplot2::geom_point(ggplot2::aes(y = copy))
   }else{
     ymax <- stats::quantile(dat$copy, 0.99, na.rm = T)
-    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) + ggplot2::geom_point(size = 0.3, color = 'grey') +
+    colors <- NULL
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number, y = adj_reads)) +
+      ggplot2::geom_point(size = 0.3, color = 'grey') +
       ggplot2::geom_point(ggplot2::aes(y = copy))
   }
 
@@ -208,15 +211,214 @@ plot_cell <- function(sbird_sce, cell, assay = 'copy', chr = NULL, return_plot =
   all_tics <- c(rep(NA, length(chr_locs)), rep('black', length(border_locs)))
 
   if(!is.null(chr)){dat <- dat[dat$chr==chr,]}
-  p <- p + ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors) +
-    ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
+  p <- p + ggplot2::scale_y_continuous(name = 'Copy Number', breaks = seq(0, ymax, 1), labels = seq(0, ymax, 1), limits = c(0, ymax)) +
     ggplot2::scale_x_continuous(name = 'Chromosome', breaks = all_locs, labels = all_labels) + ggplot2::theme_classic() +
     ggplot2::theme(axis.ticks.x = ggplot2::element_line(color = all_tics))
+  if(!is.null(colors)){
+    p <- p + ggplot2::scale_color_manual(name = 'Copy\nNumber', values = colors)
+  }
 
   if(return_plot){return(p)}
   else{plot(p)}
 }
 
+#' plot_hmm_doublet
+#'
+#' Plots the observed doublet (overlap) read count per bin alongside the
+#' HMM-decoded copy number segmentation for a single cell.  This shows the
+#' raw signal the HMM actually fitted, rather than the read-depth proxy used
+#' by \code{\link{plot_cell}}.
+#'
+#' Each point is the observed \code{Count.Over} for one bin, normalised by the
+#' expected count under the background density so that the diploid baseline
+#' sits at 1.0 (the observed/expected ratio).  A running mean is overlaid to
+#' show the smoothed doublet signal.  The HMM CN segmentation is drawn as a
+#' step function coloured by CN state using the same palette as
+#' \code{\link{plot_cell}}.
+#'
+#' @param sbird_sce  SingleCellExperiment — songbird object after
+#'   \code{\link{ploidy_correction_hmm}}.  Requires assays
+#'   \code{"hmm_cn"}, \code{"Count.Over"}, \code{"Count.Upstream"},
+#'   \code{"Total.Window.Size"}, and \code{"Bin.Reads"}.
+#' @param cell       character — cell name.
+#' @param window     integer — number of bins for the running mean smoother.
+#'   Default 5.  Must be odd; if even, incremented by 1.
+#' @param chr        character — chromosome to plot.  NULL plots all.
+#' @param return_plot logical — return ggplot object instead of printing.
+#'
+#' @return A ggplot object (if \code{return_plot = TRUE}) or NULL.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' plot_hmm_doublet(sbird_sce, cell = colnames(sbird_sce)[1])
+#' plot_hmm_doublet(sbird_sce, cell = colnames(sbird_sce)[1], window = 11)
+#' }
+plot_hmm_doublet <- function(sbird_sce, cell,
+                             window      = 5L,
+                             chr         = NULL,
+                             return_plot = FALSE) {
+
+  # ---- checks --------------------------------------------------------------
+  required <- c('hmm_cn', 'Count.Over', 'Count.Upstream',
+                'Total.Window.Size', 'Bin.Reads')
+  missing  <- setdiff(required, SummarizedExperiment::assayNames(sbird_sce))
+  if (length(missing) > 0) {
+    stop('plot_hmm_doublet requires assays: ',
+         paste(missing, collapse = ', '), '\n',
+         'Run ploidy_correction_hmm() before calling this function.')
+  }
+
+  all_cells <- colnames(SummarizedExperiment::assay(sbird_sce, 'reads'))
+  if (!cell %in% all_cells) {
+    stop("Cell '", cell, "' not found.")
+  }
+
+  if (window %% 2 == 0) {
+    window <- window + 1L
+    message('window must be odd — incremented to ', window)
+  }
+
+  # ---- extract per-cell data -----------------------------------------------
+  cell_idx   <- which(all_cells == cell)
+  rd         <- as.data.frame(SummarizedExperiment::rowData(sbird_sce))
+
+  count_over <- SummarizedExperiment::assay(sbird_sce, 'Count.Over')[,      cell_idx]
+  count_up   <- SummarizedExperiment::assay(sbird_sce, 'Count.Upstream')[,  cell_idx]
+  win_size   <- SummarizedExperiment::assay(sbird_sce, 'Total.Window.Size')[,cell_idx]
+  bin_reads  <- SummarizedExperiment::assay(sbird_sce, 'Bin.Reads')[,       cell_idx]
+  hmm_cn     <- SummarizedExperiment::assay(sbird_sce, 'hmm_cn')[,          cell_idx]
+
+  # Resolve overlap window size from metadata
+  ows <- S4Vectors::metadata(sbird_sce)$overlap_window_size
+  if (is.null(ows)) ows <- S4Vectors::metadata(sbird_sce)$min_length
+  if (is.null(ows)) ows <- 50L
+
+  # ---- compute observed / expected ratio -----------------------------------
+  # Expected count under background density (same formula as HMM emission)
+  expected <- (count_up / win_size) * ows * bin_reads
+
+  # Ratio lives in [0, 1): diploid ~0.5, triploid ~0.667, tetraploid ~0.75
+  # Suppress bins with zero or NA expected
+  obs_ratio <- ifelse(is.finite(expected) & expected > 0,
+                      count_over / expected,
+                      NA_real_)
+
+  # ---- running mean smoother -----------------------------------------------
+  half  <- window %/% 2L
+  n     <- length(obs_ratio)
+  smoothed <- vapply(seq_len(n), function(i) {
+    lo  <- max(1L, i - half)
+    hi  <- min(n,  i + half)
+    mean(obs_ratio[lo:hi], na.rm = TRUE)
+  }, numeric(1))
+
+  # ---- HMM step: scale to obs/expected space -------------------------------
+  # obs_ratio = Count.Over / expected, where expected does NOT include (k-1)/k.
+  # So obs_ratio is directly the empirical doublet fraction, living in [0, 1).
+  # The HMM step function should be in the same space: (k-1)/k.
+  # diploid -> 0.5, triploid -> 0.667, tetraploid -> 0.75, etc.
+  hmm_ratio <- (hmm_cn - 1) / hmm_cn
+
+  # ---- build data frame ----------------------------------------------------
+  dat <- data.frame(
+    bin_number = seq_len(n),
+    bin_name   = rd$bin_name,
+    chr        = rd$chr,
+    obs_ratio  = obs_ratio,
+    smoothed   = smoothed,
+    hmm_cn     = hmm_cn,
+    hmm_ratio  = hmm_ratio,
+    stringsAsFactors = FALSE
+  )
+
+  if (!is.null(chr)) dat <- dat[dat$chr == chr, ]
+  dat$bin_number <- seq_len(nrow(dat))   # reset to 1..n after filtering
+
+  # ---- chromosome axis positions -------------------------------------------
+  chr_labels  <- unique(dat$chr)
+  chr_locs    <- sapply(chr_labels, function(x) mean(which(dat$chr == x)))
+  border_locs <- sapply(chr_labels, function(x) max(which(dat$chr == x)))
+  border_locs <- border_locs[seq_len(length(border_locs) - 1)]
+  all_locs    <- c(chr_locs, border_locs)
+  all_labels  <- c(chr_labels, rep('', length(border_locs)))
+  all_tics    <- c(rep(NA, length(chr_locs)), rep('black', length(border_locs)))
+
+  # ---- colour palette (same as plot_cell) ----------------------------------
+  cn_colors        <- c('#496bab', '#9fbdd7', '#c1c1c1', '#e9c47e',
+                        '#d6804f', '#b3402e', '#821010', '#6a0936',
+                        '#ab1964', '#b6519f', '#ad80b9', '#c2a9d1')
+  names(cn_colors) <- as.character(0:11)
+  dat$cn_factor    <- factor(as.character(pmin(dat$hmm_cn, 11L)), levels = as.character(0:11))
+
+  ymax <- max(1, stats::quantile(dat$obs_ratio, 0.99, na.rm = TRUE) * 1.05)
+
+  # ---- HMM segments: run-length encode CN sequence ------------------------
+  # Build explicit horizontal segments from the RLE of the CN sequence.
+  # Work only on non-NA bins so NAs don't create spurious zero-length runs.
+  valid_bins  <- which(!is.na(dat$hmm_cn))
+  if (length(valid_bins) > 0) {
+    rle_cn    <- rle(dat$hmm_cn[valid_bins])
+    seg_end_v <- cumsum(rle_cn$lengths)            # indices into valid_bins
+    seg_start_v <- c(1L, seg_end_v[-length(seg_end_v)] + 1L)
+    seg_df <- data.frame(
+      x_start   = dat$bin_number[valid_bins[seg_start_v]],
+      x_end     = dat$bin_number[valid_bins[seg_end_v]],
+      y         = (rle_cn$values - 1) / rle_cn$values,
+      cn        = rle_cn$values,
+      cn_factor = factor(as.character(pmin(rle_cn$values, 11L)),
+                         levels = as.character(0:11)),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    seg_df <- data.frame(x_start=integer(), x_end=integer(),
+                         y=numeric(), cn=integer(),
+                         cn_factor=factor(character(), levels=as.character(0:11)))
+  }
+
+  # ---- plot ----------------------------------------------------------------
+  p <- ggplot2::ggplot(dat, ggplot2::aes(x = bin_number)) +
+    # Raw observed/expected ratio — coloured by HMM CN state
+    ggplot2::geom_point(ggplot2::aes(y = obs_ratio, colour = cn_factor),
+                        size = 0.4, alpha = 0.5, na.rm = TRUE) +
+    # Running mean — black line
+    ggplot2::geom_line(ggplot2::aes(y = smoothed),
+                       colour = 'black', linewidth = 0.4, na.rm = TRUE) +
+    # HMM segmentation — one horizontal segment per run, coloured by CN state
+    ggplot2::geom_segment(data = seg_df,
+                          ggplot2::aes(x = x_start, xend = x_end,
+                                       y = y, yend = y, colour = cn_factor),
+                          linewidth = 1.2, na.rm = TRUE) +
+    # Diploid reference line
+    ggplot2::geom_hline(yintercept = 0.5, linetype = 'dashed',
+                        colour = 'grey60', linewidth = 0.4) +
+    ggplot2::scale_colour_manual(name   = 'HMM CN',
+                                 values = cn_colors,
+                                 drop   = TRUE) +
+    ggplot2::scale_y_continuous(
+      name   = 'Doublet fraction  (Count.Over / expected)',
+      limits = c(0, ymax),
+      breaks = seq(0, 1, 0.1)
+    ) +
+    ggplot2::scale_x_continuous(
+      name   = 'Chromosome',
+      breaks = all_locs,
+      labels = all_labels
+    ) +
+    ggplot2::labs(
+      title    = paste0('Doublet signal  \u2014  ', cell),
+      subtitle = paste0('Points: obs/exp ratio per bin  |  ',
+                        'Line: running mean (window=', window, ')  |  ',
+                        'Step: HMM (k-1)/k  |  dashed: diploid baseline (0.5)')
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      axis.ticks.x    = ggplot2::element_line(color = all_tics),
+      plot.subtitle   = ggplot2::element_text(size = 8, colour = 'grey40')
+    )
+
+  if (return_plot) return(p) else plot(p)
+}
 
 #' plot_overlap_fit
 #'
@@ -276,10 +478,16 @@ plot_overlap_fit <- function(sbird_sce, cell,
 
   # ---- resolve min_length --------------------------------------------------
   if (is.null(min_length)) {
-    min_length <- S4Vectors::metadata(sbird_sce)$min_length
+    # Prefer overlap_window_size (= min_length - near_start_exclusion) — the
+    # effective doublet window width after near-start exclusion. Fall back to
+    # min_length for SCEs processed before this change was introduced.
+    min_length <- S4Vectors::metadata(sbird_sce)$overlap_window_size
     if (is.null(min_length)) {
-      message("min_length not found in metadata, defaulting to 50")
-      min_length <- 50L
+      min_length <- S4Vectors::metadata(sbird_sce)$min_length
+    }
+    if (is.null(min_length)) {
+      message("overlap_window_size not found in metadata, defaulting to min_length")
+      min_length <- min_length
     }
   }
 

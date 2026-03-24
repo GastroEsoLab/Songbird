@@ -38,7 +38,9 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL,
                           tag_overlap = 10, n_cpu = NULL, focal_amps = TRUE,
                           ploidy_method    = c('ratio', 'hmm'),
                           background_method = c('original', 'symmetric'),
-                          symmetric_x      = 25000) {
+                          symmetric_x          = 25000,
+                          background_exclusion = NULL,
+                          near_start_exclusion = 0L) {
 
   ploidy_method     <- match.arg(ploidy_method)
   background_method <- match.arg(background_method)
@@ -81,8 +83,10 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL,
                     min_length         = min_length,
                     tag_overlap        = tag_overlap,
                     focal_amps         = focal_amps,
-                    background_method  = background_method,
-                    symmetric_x        = symmetric_x),
+                    background_method    = background_method,
+                    symmetric_x          = symmetric_x,
+                    background_exclusion = background_exclusion,
+                    near_start_exclusion = near_start_exclusion),
       mc.cores = n_cpu)
   } else {
     message('Running bam + bedpe pipeline')
@@ -94,8 +98,9 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL,
                         min_length       = min_length,
                         tag_overlap      = tag_overlap,
                         focal_amps       = focal_amps,
-                        background_method = background_method,
-                        symmetric_x      = symmetric_x),
+                        background_method    = background_method,
+                        symmetric_x          = symmetric_x,
+                        near_start_exclusion = near_start_exclusion),
       mc.cores = n_cpu)
   }
 
@@ -132,9 +137,12 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL,
   # Store choices in metadata so downstream functions have full provenance
   S4Vectors::metadata(sce)$ploidy_method     <- ploidy_method
   S4Vectors::metadata(sce)$background_method <- background_method
-  S4Vectors::metadata(sce)$symmetric_x       <- symmetric_x
+  S4Vectors::metadata(sce)$symmetric_x         <- symmetric_x
+  S4Vectors::metadata(sce)$background_exclusion <- background_exclusion
   S4Vectors::metadata(sce)$tag_overlap       <- tag_overlap
-  S4Vectors::metadata(sce)$min_length        <- min_length
+  S4Vectors::metadata(sce)$min_length          <- min_length
+  S4Vectors::metadata(sce)$overlap_window_size <- min_length - near_start_exclusion
+  S4Vectors::metadata(sce)$near_start_exclusion <- near_start_exclusion
 
   return(sce)
 }
@@ -156,7 +164,9 @@ process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000,
                               min_length = 50, max_length = NULL,
                               tag_overlap = 10, focal_amps = TRUE,
                               background_method = 'original',
-                              symmetric_x = 25000){
+                              symmetric_x = 25000,
+                              background_exclusion = NULL,
+                              near_start_exclusion = 0L){
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
   reads.cor$reads <- (reads.cor$reads/sum(reads.cor$reads, na.rm = T))*10000
@@ -168,7 +178,9 @@ process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000,
                                min_length = min_length, max_length = max_length,
                                tag_overlap = tag_overlap, focal_amps = focal_amps,
                                background_method = background_method,
-                               symmetric_x = symmetric_x)
+                               symmetric_x = symmetric_x,
+                               background_exclusion = background_exclusion,
+                               near_start_exclusion = near_start_exclusion)
   return(reads.cor)
 }
 
@@ -212,14 +224,18 @@ process.bedpe <- function(genome, bedpe, bin.size = 500000,
                           min_length = 50, max_length = NULL,
                           tag_overlap = 10, focal_amps = TRUE,
                           background_method = 'original',
-                          symmetric_x = 25000){
+                          symmetric_x = 25000,
+                          background_exclusion = NULL,
+                          near_start_exclusion = 0L){
   bins <- QDNAseq::getBinAnnotations(binSize = bin.size/1000, genome = genome, verbose = F)
   bins@data$mappability <- as.numeric(bins@data$mappability)
   reads.cor <- estimate.ploidy(bedpe = bedpe, bin_data = bins,
                                min_length = min_length, max_length = max_length,
                                tag_overlap = tag_overlap, focal_amps = focal_amps,
                                background_method = background_method,
-                               symmetric_x = symmetric_x)
+                               symmetric_x = symmetric_x,
+                               background_exclusion = background_exclusion,
+                               near_start_exclusion = near_start_exclusion)
   reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
   reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   reads.cor$bedpe_file <- bedpe
@@ -246,7 +262,9 @@ process.bedpe <- function(genome, bedpe, bin.size = 500000,
 estimate.ploidy <- function(bedpe, bin_data, min_length, max_length,
                             tag_overlap, focal_amps, genome = NULL,
                             background_method = 'original',
-                            symmetric_x = 25000){
+                            symmetric_x = 25000,
+                            background_exclusion = NULL,
+                            near_start_exclusion = 0L){
   no_bam <- FALSE
   if(typeof(bin_data)=='S4'){
     bins <- bin_data
@@ -278,7 +296,9 @@ estimate.ploidy <- function(bedpe, bin_data, min_length, max_length,
   # Count overlaps & strip the outliers to correct for focal amplifications
   bed <- count.overlaps(bed, min.size = min_length, max.size = max_length,
                         background_method = background_method,
-                        symmetric_x = symmetric_x)
+                        symmetric_x = symmetric_x,
+                        background_exclusion = background_exclusion,
+                        near_start_exclusion = near_start_exclusion)
   bed[, OlapCount := Count.Over + Count.Upstream]
 
   # Merge the bed data with the bin data
@@ -597,7 +617,9 @@ is.doublet <- function(bed, min.tag.overlap, max.tag.overlap){
 #'   \code{Norm.Count.Upstream} (per-bp density), \code{Norm.Count.Over}.
 count.overlaps <- function(bed, min.size, max.size,
                            background_method = c('original', 'symmetric'),
-                           symmetric_x = 25000) {
+                           symmetric_x = 25000,
+                           background_exclusion = NULL,
+                           near_start_exclusion = 0L) {
 
   background_method <- match.arg(background_method)
 
@@ -609,14 +631,28 @@ count.overlaps <- function(bed, min.size, max.size,
   )
 
   # ---- doublet (overlap) window — identical in both methods ---------------
+  # near_start_exclusion defines how many bp immediately upstream of the
+  # reference read start are excluded from the doublet window. Reads that
+  # close are likely from the same molecule or Tn5 insertion event.
+  # Default 0 = original behaviour (no exclusion).
+  # Effective overlap window: [Start - min.size, Start - near_start_exclusion - 1]
+  # Width = min.size - near_start_exclusion bp.
+  over_end   <- bed$Start - as.integer(near_start_exclusion) - 1L
+  over_start <- bed$Start - as.integer(min.size)
+  over_valid <- over_end >= over_start
+
   over.counting <- GenomicRanges::GRanges(
-    seqnames = bed$Chr,
+    seqnames = bed$Chr[over_valid],
     ranges   = IRanges::IRanges(
-      start = bed$Start - min.size,
-      end   = bed$Start - 1L
+      start = over_start[over_valid],
+      end   = over_end[over_valid]
     )
   )
-  counted.over.overlaps <- GenomicRanges::countOverlaps(over.counting, for.counting)
+  counted.over.overlaps <- rep(0L, nrow(bed))
+  counted.over.overlaps[over_valid] <- GenomicRanges::countOverlaps(
+    over.counting, for.counting
+  )
+  overlap_window_size <- as.integer(min.size) - as.integer(near_start_exclusion)
 
   # ---- background window --------------------------------------------------
   if (background_method == 'original') {
@@ -639,7 +675,7 @@ count.overlaps <- function(bed, min.size, max.size,
     )
     counted.upstream.overlaps[!valid] <- NA_integer_
 
-    window_size <- max.size - min.size   # constant, same as original
+    window_size <- max.size - min.size   # background window width (unchanged)
 
   } else {
     # Symmetric window centred on Start, doublet zone excised.
@@ -647,15 +683,18 @@ count.overlaps <- function(bed, min.size, max.size,
     # Right arm: [Start,               Start + symmetric_x ]
     # The doublet zone [Start - min.size, Start - 1] is intentionally excluded.
 
-    # Exclusion zone: [Start - max.size, Start + max.size]
-    # max.size is the 99th percentile of fragment lengths, so excluding +/-max.size
-    # around the reference start ensures no read from the same molecule or the
-    # same local accessibility peak contaminates the background estimate.
+    # Exclusion zone boundary: background_exclusion if supplied, else max.size.
+    # background_exclusion is the distance at which local chromatin accessibility
+    # bias decays to flat background — determined empirically via
+    # optimise_symmetric_x(). Defaults to max.size for backward compatibility.
+    excl_zone <- if (!is.null(background_exclusion)) as.integer(background_exclusion)
+                 else as.integer(max.size)
+
     left_start <- pmax(1L, bed$Start - symmetric_x)
-    left_end   <- bed$Start - max.size - 1L
+    left_end   <- bed$Start - excl_zone - 1L
     left_valid <- left_end >= left_start
 
-    right_start <- bed$Start + max.size
+    right_start <- bed$Start + excl_zone
     right_end   <- bed$Start + symmetric_x
 
     # Left arm counts
@@ -698,7 +737,7 @@ count.overlaps <- function(bed, min.size, max.size,
   bed[, Count.Upstream      := counted.upstream.overlaps]
   bed[, Count.Over          := counted.over.overlaps]
   bed[, Norm.Count.Upstream := counted.upstream.overlaps / window_size]
-  bed[, Norm.Count.Over     := counted.over.overlaps     / min.size]
+  bed[, Norm.Count.Over     := counted.over.overlaps     / overlap_window_size]
   bed[, Window.Size          := window_size]
   return(bed)
 }

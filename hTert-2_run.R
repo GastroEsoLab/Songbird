@@ -30,8 +30,10 @@ sbird_sce <- identify_subclones(sbird_sce)
 
 
 
-plot_overlap_fit(sbird_sce, cell = colnames(sbird_sce)[9])
-plot_cell(sbird_sce, cell = colnames(sbird_sce)[9])
+plot_overlap_fit(sbird_sce, cell = colnames(sbird_sce)[6])
+plot_cell(sbird_sce, cell = colnames(sbird_sce)[2])
+# plot_cell(sbird_sce, cell = colnames(sbird_sce)[2])
+
 plot_heatmap(sbird_sce, assay_name = 'copy', row_split = sbird_sce$subclone)
 plot_heatmap(sbird_sce, assay_name = 'hmm_cn', row_split = sbird_sce$subclone)
 
@@ -68,8 +70,8 @@ inspect_cell <- function(sbird_sce, cell) {
   cowplot::plot_grid(p1, p2, p3, ncol = 1, align = 'v')
 }
 
-inspect_cell(sbird_sce, colnames(sbird_sce)[9])
+inspect_cell(sbird_sce, colnames(sbird_sce)[6])
 
 # Return for cowplot composition
-p <- plot_overlap_fit(sbird_sce, cell = colnames(sbird_sce)[9], return_plot = TRUE)
-cowplot::plot_grid(p, plot_cell(sbird_sce, cell = colnames(sbird_sce)[9], return_plot = TRUE))
+p <- plot_overlap_fit(sbird_sce, cell = colnames(sbird_sce)[2], return_plot = TRUE)
+cowplot::plot_grid(p, plot_cell(sbird_sce, cell = colnames(sbird_sce)[2], return_plot = TRUE))

@@ -26,7 +26,7 @@
 #'                   These are present when \code{process.batch} was called with
 #'                   bedpe files (i.e. the overlap-based ploidy pipeline ran).
 #' @param min_reads  integer — minimum total reads for a cell to contribute its
-#'                   HMM ploidy to the cluster-level WGD detection. Default 50000.
+#'                   HMM ploidy to the cluster-level WGD detection. Default 10000.
 #' @param k          integer — neighbours for the pre-clustering used by WGD
 #'                   detection (same role as in \code{ploidy_correction}). Default 45.
 #' @param cn_states  integer vector — CN states modelled by the HMM. Default 1:6.
@@ -54,21 +54,29 @@
 #' sbird_sce <- identify_subclones(sbird_sce)
 #' }
 ploidy_correction_hmm <- function(sbird_sce,
-                                  min_reads  = 50000,
+                                  min_reads  = 10000,
                                   k          = 45,
                                   cn_states  = 1:6,
                                   p_stay     = 0.999,
                                   min_length = 50,
+                                  max_iter   = 50,
                                   n_cpu      = NULL) {
 
   if (is.null(n_cpu)) n_cpu <- max(1L, parallel::detectCores() - 1L)
 
-  # Read min_length from SCE metadata if not explicitly supplied.
-  # min_length must match the value used in process.batch — it defines
-  # the overlap window size in the emission model.
+  # Read overlap_window_size from metadata — this is min_length - near_start_exclusion,
+  # the effective width of the doublet window after excluding the near-start zone.
+  # Falls back to min_length if overlap_window_size was not stored (older SCEs).
+  stored_ows <- S4Vectors::metadata(sbird_sce)$overlap_window_size
+  stored_ml  <- S4Vectors::metadata(sbird_sce)$min_length
   if (min_length == 50L) {
-    stored <- S4Vectors::metadata(sbird_sce)$min_length
-    if (!is.null(stored)) min_length <- stored
+    if (!is.null(stored_ows)) {
+      min_length <- stored_ows   # preferred: exact effective window size
+    } else if (!is.null(stored_ml)) {
+      min_length <- stored_ml    # fallback: raw min_length (no near-start exclusion)
+      warning("overlap_window_size not found in metadata — using min_length as fallback. ",
+              "Re-run process.batch to get correct overlap window size.")
+    }
   }
 
   # ---- check required data is present ------------------------------------
@@ -129,7 +137,8 @@ ploidy_correction_hmm <- function(sbird_sce,
       hmm_ploidy(bd,
                  min_length = min_length,
                  cn_states  = cn_states,
-                 p_stay     = p_stay),
+                 p_stay     = p_stay,
+                 max_iter   = max_iter),
       error = function(e) {
         warning("HMM failed for cell ", cell_names[i], ": ", conditionMessage(e))
         list(cn_sequence  = rep(NA_integer_, n_bins),
@@ -179,13 +188,23 @@ ploidy_correction_hmm <- function(sbird_sce,
       read_counts > min_reads
     ]
 
-    if (length(high_q) >= 10) {
+    min_cluster <- max(3L, min(10L, floor(length(clone) / 3L)))
+    if (length(high_q) >= min_cluster) {
       sbird_sce$corr.ploidy[clone] <- mean(high_q, na.rm = TRUE)
       sbird_sce$wgd[clone]         <- detect_wgd(high_q, hmm_ploidies)
     } else {
-      warning("Not enough high-quality cells to estimate ploidy for subclone: ",
-              subclone, "\nDefaulting to range 2-8 in copyCall.")
-      sbird_sce$corr.ploidy[clone] <- NA_real_
+      # Fall back to per-cell hmm_ploidy directly if cluster is too small
+      # or not enough high-quality cells — better than NA which disables copyCall
+      fallback <- hmm_ploidies[is.finite(hmm_ploidies) & hmm_ploidies > 0]
+      if (length(fallback) > 0) {
+        sbird_sce$corr.ploidy[clone] <- mean(fallback, na.rm = TRUE)
+        message("Subclone ", subclone, ": using per-cell mean ploidy as fallback (",
+                length(fallback), " cells, threshold was ", min_cluster, ").")
+      } else {
+        warning("Not enough high-quality cells to estimate ploidy for subclone: ",
+                subclone, "\nDefaulting to range 2-8 in copyCall.")
+        sbird_sce$corr.ploidy[clone] <- NA_real_
+      }
     }
   }
 

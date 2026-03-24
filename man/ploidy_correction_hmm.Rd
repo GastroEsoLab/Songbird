@@ -6,11 +6,12 @@
 \usage{
 ploidy_correction_hmm(
   sbird_sce,
-  min_reads = 50000,
+  min_reads = 10000,
   k = 45,
   cn_states = 1:6,
   p_stay = 0.999,
   min_length = 50,
+  max_iter = 50,
   n_cpu = NULL
 )
 }
@@ -27,7 +28,7 @@ These are present when \code{process.batch} was called with
 bedpe files (i.e. the overlap-based ploidy pipeline ran).}
 
 \item{min_reads}{integer — minimum total reads for a cell to contribute its
-HMM ploidy to the cluster-level WGD detection. Default 50000.}
+HMM ploidy to the cluster-level WGD detection. Default 10000.}
 
 \item{k}{integer — neighbours for the pre-clustering used by WGD
 detection (same role as in \code{ploidy_correction}). Default 45.}
