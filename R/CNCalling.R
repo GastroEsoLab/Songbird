@@ -224,6 +224,9 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
 #'
 #' @examples
 detect_wgd <- function(high_qPloidies, all_ploidies){
+  if (length(unique(high_qPloidies)) < 2) {
+    return(rep(FALSE, length(all_ploidies)))
+  }
   wgd_clustering <- stats::kmeans(high_qPloidies, centers = 2)
   wgd_index <- which.max(wgd_clustering$centers)
 
@@ -251,7 +254,7 @@ detect_wgd <- function(high_qPloidies, all_ploidies){
 #' @examples
 copyCall <- function(sbird_sce, n_cpu = NULL){
   if(is.null(n_cpu)){
-    n_cpu <- parallel::detectCores() - 1
+    n_cpu <- max(1L, parallel::detectCores() - 1L)
   }
   # Fit means to produce the final copy matrix
   cn_matrix <- c()
@@ -328,7 +331,7 @@ create_sce <- function(res){
 #' @examples
 create_sce_from_res <- function(res, n_cpu=NULL){
   if(is.null(n_cpu)){
-    n_cpu <- parallel::detectCores() - 1
+    n_cpu <- max(1L, parallel::detectCores() - 1L)
   }
 
   reads <- reads_to_matrix(res, 'reads')
