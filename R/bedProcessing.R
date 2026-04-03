@@ -46,7 +46,6 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
                     focal_amps = focal_amps),
       mc.cores = n_cpu)
   }else{
-    print('calling bam bedpe')
     res <- parallel::mclapply(1:length(bams), function(i)
       process.bam.bedpe(bam = bams[i],
                         genome = genome,
@@ -71,6 +70,7 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
+#' @export
 process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE){
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
@@ -131,6 +131,30 @@ process.bedpe <- function(genome, bedpe, bin.size = 500000, min_length = 50, max
   reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   reads.cor$bedpe_file <- bedpe
   return(reads.cor)
+}
+
+#' poisson_nll
+#'
+#' @param log_n parameter to optimize
+#' @param over_counts vector of binned overlapping counts
+#' @param upstream_counts vector of binned upstream counts
+#' @param w_over size of the overlapping region
+#' @param w_upstream size of the upstream window
+#'
+#' @return a data frame with observations derived from the bedpe file
+poisson_nll <- function(log_n, over_counts, upstream_counts, w_over, w_upstream) {
+  n <- exp(log_n)
+  total <- over_counts + upstream_counts
+  # Profile out lambda_i with window size correction
+  lambda_hat <- total / (n * w_upstream + (n-1) * w_over)
+  lambda_hat[lambda_hat <= 0] <- 1e-10
+
+  nll <- -sum(
+    dpois(upstream_counts, n * lambda_hat * w_upstream, log = TRUE) +
+      dpois(over_counts, (n-1) * lambda_hat * w_over, log = TRUE),
+    na.rm = TRUE
+  )
+  return(nll)
 }
 
 #' estimate.ploidy
@@ -461,8 +485,8 @@ is.doublet <- function(bed, min.tag.overlap, max.tag.overlap){
 #' @return the bed file with the number of reads overlapping the upstream and over regions for each read
 count.overlaps <- function(bed, min.size, max.size) {
   # bed <- tmp2
-  upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size,
-                                      end = bed$Start - min.size - 1)
+  upstream.ranges <- IRanges::IRanges(start = bed$Start - 2*max.size,
+                                      end = bed$Start - max.size)
   upstream.counting <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                               ranges = upstream.ranges)
 
@@ -482,7 +506,7 @@ count.overlaps <- function(bed, min.size, max.size) {
 
   data.out <- data.frame(Count.Upstream = counted.upstream.overlaps,
                          Count.Over = counted.over.overlaps,
-                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - min.size),
+                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size),
                          Norm.Count.Over = counted.over.overlaps / (min.size))
   data.out <- cbind(bed, data.out)
   return(data.out)
