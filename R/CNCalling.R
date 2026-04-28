@@ -46,7 +46,7 @@ sanitize_ploidy <- function(expected_ploidy){
       expected_ploidy <- 15
     }
     # main detected peak could be any one of 1,2,3,4,5 state - modeled by a poisson mean 2
-    modeState <- seq(floor(expected_ploidy), round(expected_ploidy*1.5))
+    modeState <- seq(floor(expected_ploidy), round(expected_ploidy*1.75))
     modeState <- modeState[modeState>0]
 
   }else{ # If skipping the overlap calling pipeline, assume ploidies from 2 to 8
@@ -94,9 +94,28 @@ est_cn <- function(values, rpcn, sigma, return_cn = F){
 #' @return negative log likelihood (for minimization by an optimizer)
 #'
 tune_rpcn <- function(values, null, uniploid, sigma){
+  #res <- est_cn(values, uniploid, sigma, return_cn = T)
+  #complex <- 0.5 * log(length(values)) * length(unique(res$states))
+  #score <- sum(res$fit) - est_cn(null, uniploid, sigma) + complex
   score <- est_cn(values, uniploid, sigma) - est_cn(null, uniploid, sigma)
   return(-score)
 }
+
+#' get_peak
+#'
+#' @param vals numeric vector of segmented read counts to pick a peak from
+#'
+#' @return The final peak - either the density peak or the median
+#' @export
+get_peak <- function(vals){
+  tryCatch(
+    {
+      dens_peak <- density(values, bw = 'SJ', na.rm = T)
+      return(dens_peak$x[which.max(dens_peak$y)])
+    },
+    error = function(msg) {return(median(vals, na.rm = T))})
+}
+
 
 #' fitMeans
 #'
@@ -137,7 +156,8 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
   if(sum(mid_means) < 100){
     mid_means <- rep(TRUE, length(means))
   }
-  null_means <- rnorm(length(means), mean = mean(means[mid_means]), sd = sigma)
+  #null_means <- rnorm(length(means), mean = mean(means[mid_means]), sd = sigma)
+  null_means <- runif(length(means), min = min(means), max = max(means))
 
   for(i in 1:length(modeState)){
     # Given mode state - find uniploid state
@@ -158,8 +178,13 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
     # Predict CN States
     res <- est_cn(means, uniploid, sigma, return_cn = T)
     null_res <- est_cn(null_means, uniploid, sigma, return_cn = T)
-
     score <- sum(res$fit[mid_means]) - sum(null_res$fit[mid_means])
+
+    # If we have an estimated ploidy calculate the KL Divergence and subtract it from the final LLR
+    if(!is.na(expected_ploidy)){
+      ploidy_error <- (mean(res$states) - expected_ploidy) / expected_ploidy
+      score <- score - 0.5 * sum(mid_means) * ploidy_error**2
+    }
     if(score > best_score){
       best_score <- score
       best_states <- res$states
@@ -184,7 +209,7 @@ fitMeans <- function(means, use, sigma, expected_ploidy = NA){
 #' @export
 #'
 #' @examples
-ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
+ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45, callWGD = TRUE){
   # For each subclone average the ploidy_estimate
   sbird_sce <- identify_subclones(sbird_sce, assay = 'segmented', k = k, column_name = 'pc_groups')
   clonal_membership <- SingleCellExperiment::colData(sbird_sce)[['pc_groups']]
@@ -205,6 +230,11 @@ ploidy_correction <- function(sbird_sce, min_reads = 100000, k = 45){
       sbird_sce$corr.ploidy[clone] <- NA
     }
   }
+
+  if(!callWGD){
+    sbird_sce$wgd = FALSE
+  }
+
   # Adjust ploidy estimates for WGD
   for(i in 1:length(sbird_sce$corr.ploidy)){
     wgd_status <- sbird_sce$wgd[i]
@@ -264,6 +294,7 @@ copyCall <- function(sbird_sce, n_cpu = NULL){
   sigmas[sigmas == 0] <- min(sigmas[sigmas > 0])
 
   cn_matrix <- pbmcapply::pbmclapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])}, mc.cores = n_cpu)
+  #cn_matrix <- lapply(1:ncol(segmented_matrix), function(i){fitMeans(segmented_matrix[,i], use, sigmas[i], sbird_sce$corr.ploidy[i])})
   cn_matrix <- do.call(cbind, cn_matrix)
 
   SummarizedExperiment::assay(sbird_sce, 'copy', withDimnames = F) <- cn_matrix
@@ -333,7 +364,8 @@ create_sce_from_res <- function(res, n_cpu=NULL){
 
   reads <- reads_to_matrix(res, 'reads')
   counts <- reads_to_matrix(res, 'uncorrected.reads')
-  segmented <- pbmcapply::pbmclapply(res, function(x) Songbird::ubh_segment(x$reads, use = TRUE), mc.cores = n_cpu)
+  segmented <- pbmcapply::pbmclapply(res, function(x) ubh_segment(x$reads), mc.cores = n_cpu)
+  #segmented <- lapply(res, function(x) ubh_segment(x$reads))
   segmented <- do.call(rbind, segmented)
 
   sbird_sce <- SingleCellExperiment::SingleCellExperiment(assays = list(counts = t(counts), reads = t(reads), segmented = t(segmented)))

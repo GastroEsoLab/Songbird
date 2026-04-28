@@ -14,7 +14,7 @@
 #'
 #' @examples
 
-process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, n_cpu=NULL, focal_amps = TRUE){
+process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, n_cpu=NULL, focal_amps = TRUE, window = 1){
   if(is.null(n_cpu)){
     n_cpu <- parallel::detectCores() - 1
   }
@@ -34,7 +34,8 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
                   bin.size = bin.size,
                   min_length = min_length,
                   tag_overlap = tag_overlap,
-                  focal_amps = focal_amps),
+                  focal_amps = focal_amps,
+                  excl.window = window),
       mc.cores = n_cpu)
   }else if(is.null(bams)){
     res <- parallel::mclapply(1:length(bedpes), function(i)
@@ -43,10 +44,18 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
                     bin.size = bin.size,
                     min_length = min_length,
                     tag_overlap = tag_overlap,
-                    focal_amps = focal_amps),
+                    focal_amps = focal_amps,
+                    excl.window = window),
       mc.cores = n_cpu)
+    #res <- lapply(1:length(bedpes), function(i)
+    #  process.bedpe(genome = genome,
+    #                bedpe = bedpes[i],
+    #                bin.size = bin.size,
+    #                min_length = min_length,
+    #                tag_overlap = tag_overlap,
+    #                focal_amps = focal_amps,
+    #                window = window))
   }else{
-    print('calling bam bedpe')
     res <- parallel::mclapply(1:length(bams), function(i)
       process.bam.bedpe(bam = bams[i],
                         genome = genome,
@@ -54,7 +63,8 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
                         bin.size = bin.size,
                         min_length = min_length,
                         tag_overlap = tag_overlap,
-                        focal_amps = focal_amps),
+                        focal_amps = focal_amps,
+                        excl.window = window),
       mc.cores = n_cpu)
   }
   return(create_sce(res))
@@ -71,7 +81,8 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE){
+#' @export
+process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE, excl.window = 1){
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
   reads.cor$reads <- (reads.cor$reads/sum(reads.cor$reads, na.rm = T))*10000
@@ -81,7 +92,7 @@ process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000, min_length 
   reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
   reads.cor$bam_file <- bam
   reads.cor$bedpe_file <- bedpe
-  reads.cor <- estimate.ploidy(bedpe = bedpe, bin_data = reads.cor, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, focal_amps)
+  reads.cor <- estimate.ploidy(bedpe = bedpe, bin_data = reads.cor, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, focal_amps = focal_amps, excl.window = excl.window)
   return(reads.cor)
 }
 
@@ -96,7 +107,7 @@ process.bam.bedpe <- function(bam, genome, bedpe, bin.size = 500000, min_length 
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.bam <- function(bam, genome, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE){
+process.bam <- function(bam, genome, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE, excl.window = 1){
   reads <- load_cell(bam, binSize = bin.size, genome)
   reads.cor <- convert_long(reads)
   reads.cor$reads <- (reads.cor$reads/sum(reads.cor$reads, na.rm = T))*10000
@@ -122,10 +133,11 @@ process.bam <- function(bam, genome, bin.size = 500000, min_length = 50, max_len
 #' @param tag_overlap size of the read overlap created by a tagmentation event
 #'
 #' @return corrected reads
-process.bedpe <- function(genome, bedpe, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE){
+process.bedpe <- function(genome, bedpe, bin.size = 500000, min_length = 50, max_length = NULL, tag_overlap = 10, focal_amps = TRUE, excl.window = 1){
+  print(paste0('Processing ', bedpe))
   bins <- QDNAseq::getBinAnnotations(binSize = bin.size/1000, genome = genome, verbose = F)
   bins@data$mappability <- as.numeric(bins@data$mappability)
-  reads.cor <- estimate.ploidy(bedpe = bedpe, bin_data = bins, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, focal_amps)
+  reads.cor <- estimate.ploidy(bedpe = bedpe, bin_data = bins, min_length = min_length, max_length = max_length, tag_overlap = tag_overlap, focal_amps, excl.window = excl.window)
 
   reads.cor$ubh_tx <- ubh_segment(reads.cor$reads)
   reads.cor$bin.depth <- reads.cor$reads/reads.cor$ubh_tx
@@ -142,9 +154,11 @@ process.bedpe <- function(genome, bedpe, bin.size = 500000, min_length = 50, max
 #' @param min_length minimum read length (default 50 nt)
 #' @param max_length maximum read length (default 1000 nt)
 #' @param tag_overlap number of nucleotides that the Tn5 overlaps (default 9 nt)
+#' @param focal_amps whether or not to perform the focal amplicon filter
+#' @param window the exclusion window to look for
 #'
 #' @return a data frame with observations derived from the bedpe file
-estimate.ploidy <- function(bedpe, bin_data, min_length, max_length, tag_overlap, focal_amps, genome = NULL){
+estimate.ploidy <- function(bedpe, bin_data, min_length, max_length, tag_overlap, focal_amps, excl.window){
   no_bam <- FALSE
   if(typeof(bin_data)=='S4'){
     bins <- bin_data
@@ -156,10 +170,13 @@ estimate.ploidy <- function(bedpe, bin_data, min_length, max_length, tag_overlap
 
   # Load bed and get QC and Ploidy Estimation Metrics
   bed <- load.preprocess.bed(bedpe, bin_data, tag_overlap)
-  if(nrow(bed)==0){
-    out <- data.frame(ratio = NA, breadth = NA, coverage = NA, prop_doublet_tags = NA,
-                      avg_length = NA, overlap_genome_size = NA, ploidy_readCount = NA)
-    return(out)
+  if(nrow(bed)< 100){
+    missing_cols <- c("binName", "Bin.Reads", "Count.Upstream", "Norm.Count.Upstream",
+                      "Count.Over", "Norm.Count.Over", "Bin.Coverage", "Avg.Length",
+                      "Num.Doublets", "Olap.Count", "Bin.Prop.Doublets", "Bin.Quality",
+                      "bin_ratio", "est_ploidy")
+    bin_data[missing_cols] <- NA
+    return(bin_data)
   }
 
   if(is.null(max_length)){
@@ -168,7 +185,7 @@ estimate.ploidy <- function(bedpe, bin_data, min_length, max_length, tag_overlap
   bed <- bed[(bed$Length>min_length) & (bed$Length<max_length),]
 
   # Count overlaps & strip the outliers to correct for focal amplifications
-  bed <- count.overlaps(bed, min.size = min_length, max.size = max_length)
+  bed <- count.overlaps(bed, min.size = min_length, max.size = max_length, excl.window = excl.window)
   bed[, OlapCount := Count.Over + Count.Upstream]
 
   # Merge the bed data with the bin data
@@ -457,17 +474,19 @@ is.doublet <- function(bed, min.tag.overlap, max.tag.overlap){
 #' @param min.size minimum read length (default 50 nt)
 #' @param max.size maximum read length (default 1000 nt)
 #' @param tag.overlap largest length of the tagmentation read overlap (default 10 nt)
+#' @param excl.window number of nucleotides adjacent to the reference read to exclude (default is 1nt)
+#'
 #'
 #' @return the bed file with the number of reads overlapping the upstream and over regions for each read
-count.overlaps <- function(bed, min.size, max.size) {
+count.overlaps <- function(bed, min.size, max.size, tag.overlap = 10, excl.window = 1) {
   # bed <- tmp2
-  upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size,
-                                      end = bed$Start - min.size - 1)
+  upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size * 2,
+                                      end = bed$Start - max.size)
   upstream.counting <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                               ranges = upstream.ranges)
 
   overlap.ranges <- IRanges::IRanges(start = bed$Start - min.size,
-                                     end = bed$Start - 1)
+                                     end = bed$Start - excl.window - tag.overlap)
   over.counting <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                           ranges = overlap.ranges)
 
@@ -482,11 +501,12 @@ count.overlaps <- function(bed, min.size, max.size) {
 
   data.out <- data.frame(Count.Upstream = counted.upstream.overlaps,
                          Count.Over = counted.over.overlaps,
-                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - min.size),
-                         Norm.Count.Over = counted.over.overlaps / (min.size))
+                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - tag.overlap),
+                         Norm.Count.Over = counted.over.overlaps / (min.size - tag.overlap - excl.window))
   data.out <- cbind(bed, data.out)
   return(data.out)
 }
+
 
 #' calc.breadth
 #'
