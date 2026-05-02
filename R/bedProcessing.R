@@ -23,7 +23,7 @@ process.batch <- function(bams = NULL, genome = 'hg38', bedpes = NULL, bin.size 
     stop('Either bams or bedpes must be provided')
   }
 
-  if(!genome %in% c('hg38', 'hg19', 'hs1')){
+  if(!genome %in% c('hg38', 'hg19', 'hs1', 'mm10')){
     stop('Genome must be one of hg38, hg19, or hs1')
   }
 
@@ -478,7 +478,7 @@ is.doublet <- function(bed, min.tag.overlap, max.tag.overlap){
 #'
 #'
 #' @return the bed file with the number of reads overlapping the upstream and over regions for each read
-count.overlaps <- function(bed, min.size, max.size, tag.overlap = 10, excl.window = 1) {
+count.overlaps <- function(bed, min.size, max.size, excl.window = 1) {
   # bed <- tmp2
   upstream.ranges <- IRanges::IRanges(start = bed$Start - max.size * 2,
                                       end = bed$Start - max.size)
@@ -486,7 +486,7 @@ count.overlaps <- function(bed, min.size, max.size, tag.overlap = 10, excl.windo
                                               ranges = upstream.ranges)
 
   overlap.ranges <- IRanges::IRanges(start = bed$Start - min.size,
-                                     end = bed$Start - excl.window - tag.overlap)
+                                     end = bed$Start - excl.window)
   over.counting <- GenomicRanges::GRanges(seqnames = bed$Chr,
                                           ranges = overlap.ranges)
 
@@ -501,8 +501,8 @@ count.overlaps <- function(bed, min.size, max.size, tag.overlap = 10, excl.windo
 
   data.out <- data.frame(Count.Upstream = counted.upstream.overlaps,
                          Count.Over = counted.over.overlaps,
-                         Norm.Count.Upstream = counted.upstream.overlaps / (max.size - tag.overlap),
-                         Norm.Count.Over = counted.over.overlaps / (min.size - tag.overlap - excl.window))
+                         Norm.Count.Upstream = counted.upstream.overlaps / max.size,
+                         Norm.Count.Over = counted.over.overlaps / (min.size - excl.window))
   data.out <- cbind(bed, data.out)
   return(data.out)
 }
